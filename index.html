@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Choix de l'application</title>
+  <style>
+    :root { --b:#e5e7eb; --t:#111827; --m:#6b7280; --a:#2563eb; }
+    html,body{height:100%}
+    body{margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial; color:var(--t); background:#fafafa; display:grid; place-items:center;}
+    .wrap{ max-width:900px; padding:24px; }
+    h1{ font-size:28px; margin:0 0 8px; }
+    p{ color:var(--m); margin:0 0 24px; }
+    .grid{ display:grid; grid-template-columns: 1fr; gap:16px; }
+    @media(min-width: 720px){ .grid{ grid-template-columns: 1fr 1fr; } }
+    .card{ background:#fff; border:1px solid var(--b); border-radius:16px; padding:20px; }
+    .title{ font-weight:700; font-size:18px; margin-bottom:8px; }
+    .desc{ color:var(--m); font-size:14px; margin-bottom:14px; min-height: 44px;}
+    a.btn{ display:inline-block; text-decoration:none; border:1px solid var(--b); background:white; padding:10px 14px; border-radius:12px; font-weight:600; }
+    a.btn.primary{ border-color:transparent; background:var(--a); color:#fff; }
+    .small{ font-size:12px; color:var(--m); margin-top:8px; }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <h1>Choisissez l'application</h1>
+    <p>Deux variantes. Chacune fonctionne en HTTPS via GitHub Pages.</p>
+    <section class="grid">
+      <div class="card">
+        <div class="title">Lecteur vocal (1 colonne)</div>
+        <div class="desc">Entrer une liste de nombres. Lecture nombre par nombre avec mot-clé.</div>
+        <a class="btn primary" href="lecteur_vocal2.html">Ouvrir</a>
+        <div class="small">Fichier : lecteur_vocal2.html</div>
+      </div>
+      <div class="card">
+        <div class="title">Lecteur vocal 2 colonnes</div>
+        <div class="desc">Lire ligne par ligne « texte + nombre » avec virgule décimale.</div>
+        <a class="btn primary" href="lecteur_vocal_V2.html">Ouvrir</a>
+        <div class="small">Fichier : lecteur_vocal_V2.html</div>
+      </div>
+    </section>
+  </main>
+</body>
+</html>
