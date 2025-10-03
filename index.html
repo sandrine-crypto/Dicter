@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Lecteur vocal de nombres</title>
+  <style>
+    :root { --b:#e5e7eb; --t:#111827; --m:#6b7280; --a:#2563eb; }
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji"; color: var(--t); margin:0; background:#fafafa; }
+    .container{ max-width: 960px; margin: 0 auto; padding: 24px; }
+    h1{ font-size: 24px; margin: 0 0 8px; }
+    .muted{ color: var(--m); font-size: 14px; margin-bottom: 16px; }
+    .grid{ display:grid; grid-template-columns: 1fr; gap:16px; }
+    @media(min-width: 900px){ .grid{ grid-template-columns: 2fr 1fr; } }
+    .card{ background:white; border:1px solid var(--b); border-radius: 16px; padding: 16px; }
+    label{ font-size: 14px; font-weight: 600; display:block; margin-bottom:6px; }
+    textarea,input,select{ width:100%; border:1px solid var(--b); border-radius:12px; padding:10px; font-size:14px; }
+    textarea{ min-height: 180px; resize: vertical; }
+    .row{ display:grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .controls{ display:flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+    button{ border:1px solid var(--b); background:white; padding:8px 12px; border-radius: 12px; cursor:pointer; font-size:14px; }
+    button[disabled]{ opacity:0.5; cursor:not-allowed; }
+    .status{ font-size: 14px; margin-top: 8px; }
+    .pill{ display:inline-block; padding:2px 8px; border-radius:999px; border:1px solid var(--b); font-size:12px; }
+    .list, .log{ height: 180px; overflow:auto; border:1px solid var(--b); border-radius:12px; padding:10px; background:#fff; }
+    ol{ margin:0; padding-left: 18px; }
+    .current{ font-weight:700; color: var(--a); }
+    .help{ font-size:12px; color:var(--m); margin-top:8px; }
+    .error{ color:#b91c1c; margin-top:6px; font-size: 13px; }
+
+    /* --- Large centered display for current number --- */
+    .current-display{
+      position: fixed;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      z-index: 9999;
+      pointer-events: none;
+      text-align: center;
+      font-weight: 800;
+      color: var(--t);
+      background: rgba(255,255,255,0.92);
+      padding: 18px 28px;
+      border-radius: 18px;
+      box-shadow: 0 18px 40px rgba(0,0,0,0.12);
+      border: 2px solid rgba(37,99,235,0.08);
+      opacity: 0;
+      transition: opacity 220ms ease;
+      /* responsive ultra-large size: use viewport units with clamp */
+      font-size: clamp(48px, 18vw, 280px);
+      line-height: 1;
+      max-width: 92vw;
+      word-break: break-word;
+    }
+    .current-display.show{ opacity: 1; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Lecteur vocal de nombres</h1>
+    <div class="muted">Lit chaque nombre puis attend votre mot-clé vocal avant de passer au suivant.</div>
+
+    <div class="grid">
+      <div class="card">
+        <label for="numbers">Liste de nombres</label>
+        <textarea id="numbers" placeholder="Ex:\n12,5\n7,02\n3\n10,75">12,5
+7,02
+3
+10,75</textarea>
+        <div class="help">Séparez par retours à la ligne, points-virgules ou virgule <b>suivie d’un espace</b>. La virgule décimale est respectée.</div>
+      </div>
+
+      <div class="card">
+        <div class="row">
+          <div>
+            <label for="keyword">Mot-clé à dire</label>
+            <input id="keyword" value="OUI" />
+            <div class="help">Par défaut : OUI. Modifiable.</div>
+          </div>
+          <div>
+            <label for="lang">Langue</label>
+            <select id="lang">
+              <option value="fr-FR" selected>fr-FR</option>
+              <option value="fr-CA">fr-CA</option>
+              <option value="en-US">en-US</option>
+              <option value="en-GB">en-GB</option>
+              <option value="de-DE">de-DE</option>
+              <option value="es-ES">es-ES</option>
+              <option value="it-IT">it-IT</option>
+            </select>
+          </div>
+        </div>
+        <div style="margin-top:12px">
+          <label for="rate">Vitesse</label>
+          <input id="rate" type="range" min="0.6" max="1.6" step="0.1" value="1" />
+          <div class="help"><span id="rateVal">1.0</span>x</div>
+        </div>
+        <div class="controls">
+          <button id="startBtn">Démarrer</button>
+          <button id="pauseBtn" disabled>Pause</button>
+          <button id="resumeBtn" disabled>Reprendre</button>
+          <button id="nextBtn" disabled>Suivant</button>
+          <button id="resetBtn">Réinitialiser</button>
+          <button id="permBtn" title="Vérifier et autoriser le micro">Autoriser le micro</button>
+        </div>
+        <div id="permHelp" class="help" style="display:none"></div>
+        <div class="status">État : <span class="pill" id="status">Prêt</span></div>
+        <div class="error" id="error" hidden></div>
+      </div>
+    </div>
+
+    <div class="grid" style="margin-top:16px">
+      <div class="card">
+        <label>Aperçu de la liste</label>
+        <div class="list" id="preview"></div>
+      </div>
+      <div class="card">
+        <label>Journal</label>
+        <div class="log" id="log"></div>
+      </div>
+    </div>
+
+    <div class="help" style="margin-top:12px">
+      Conseils : utilisez Chrome ou Edge. Autorisez le micro. iOS Safari peut limiter l’écoute continue.
+    </div>
+  </div>
+
+  <!-- Grand affichage central du nombre en cours -->
+  <div id="currentDisplay" class="current-display" aria-live="polite" aria-hidden="true"></div>
+
+  <script>
+    // ---- Helpers ----
+    const $ = (sel) => document.querySelector(sel);
+    const numbersEl = $('#numbers');
+    const keywordEl = $('#keyword');
+    const langEl = $('#lang');
+    const rateEl = $('#rate');
+    const rateValEl = $('#rateVal');
+    const startBtn = $('#startBtn');
+    const pauseBtn = $('#pauseBtn');
+    const resumeBtn = $('#resumeBtn');
+    const nextBtn = $('#nextBtn');
+    const resetBtn = $('#resetBtn');
+    const permBtn  = $('#permBtn');
+    const statusEl = $('#status');
+    const errorEl = $('#error');
+    const previewEl = $('#preview');
+    const logEl = $('#log');
+    const currentDisplay = $('#currentDisplay');
+
+    const Phase = { idle:'idle', speaking:'speaking', waiting:'waiting_keyword', paused:'paused', done:'done' };
+
+    let phase = Phase.idle;
+    let currentIndex = -1;
+    let currentNumbers = [];
+    let synth = window.speechSynthesis;
+    let voices = [];
+    let rec = null; // SpeechRecognition instance
+    let stopRec = () => {};
+
+    function ts(){ return new Date().toLocaleTimeString(); }
+    function log(msg){ const div = document.createElement('div'); div.textContent = ts()+" "+msg; logEl.prepend(div); while(logEl.children.length>400) logEl.removeChild(logEl.lastChild); }
+
+    function setStatus(text){ statusEl.textContent = text; }
+    function setError(msg){ if(!msg){ errorEl.hidden=true; errorEl.textContent=''; return;} errorEl.hidden=false; errorEl.textContent = msg; }
+
+    function normalize(s){
+      return s.toLowerCase().normalize('NFD').replace(/\p{Diacritic}+/gu,'').replace(/[\s\.,;:!?]+/g,' ').trim();
+    }
+
+    function parseNumbers(text){
+      const tokens = text
+        .split(/[\n;\t]|,(?=\s|$)/g)
+        .map(t=>t.trim())
+        .filter(Boolean);
+      return tokens;
+    }
+
+    function renderPreview(){
+      previewEl.innerHTML='';
+      const ol = document.createElement('ol');
+      ol.style.margin=0; ol.style.paddingLeft='18px';
+      if(currentNumbers.length===0){ const d=document.createElement('div'); d.className='help'; d.textContent='(vide)'; previewEl.appendChild(d); return; }
+      currentNumbers.forEach((n,i)=>{
+        const li=document.createElement('li');
+        li.textContent=n; if(i===currentIndex) li.className='current'; ol.appendChild(li);
+      });
+      previewEl.appendChild(ol);
+    }
+
+    function updateNumbers(){ currentNumbers = parseNumbers(numbersEl.value || ''); renderPreview(); updateButtons(); }
+
+    function setPhase(p){ phase = p; const map={ idle:'Prêt', speaking:'Lecture en cours', waiting:`En pause. Dites "${keywordEl.value}" pour continuer`, paused:'En pause', done:'Terminé' }; setStatus(map[p]); updateButtons(); }
+
+    function updateButtons(){
+      startBtn.disabled = !(currentNumbers.length>0 && (phase===Phase.idle || phase===Phase.done || phase===Phase.paused && currentIndex<0));
+      pauseBtn.disabled = !(phase===Phase.speaking || phase===Phase.waiting);
+      resumeBtn.disabled = !(phase===Phase.paused);
+      nextBtn.disabled = !(currentNumbers.length>0);
+    }
+
+    // ---- Current display helpers ----
+    function showCurrentDisplay(text){
+      if(!currentDisplay) return;
+      currentDisplay.textContent = text;
+      currentDisplay.setAttribute('aria-hidden','false');
+      currentDisplay.classList.add('show');
+    }
+    function hideCurrentDisplay(){
+      if(!currentDisplay) return;
+      currentDisplay.classList.remove('show');
+      currentDisplay.setAttribute('aria-hidden','true');
+    }
+
+    // ---- Speech synthesis ----
+    function loadVoices(){ voices = synth.getVoices(); }
+    loadVoices();
+    if(window.speechSynthesis){ window.speechSynthesis.onvoiceschanged = loadVoices; }
+
+    function speak(text){
+      return new Promise((resolve,reject)=>{
+        if(!window.speechSynthesis){ reject(new Error('Synthèse vocale indisponible')); return; }
+        try{ window.speechSynthesis.cancel(); }catch{}
+        const u = new SpeechSynthesisUtterance(text);
+        u.lang = langEl.value;
+        u.rate = parseFloat(rateEl.value||'1');
+        const preferred = voices.find(v=>v.lang===u.lang) || voices.find(v=>v.lang && v.lang.startsWith(u.lang.split('-')[0]));
+        if(preferred) u.voice = preferred;
+        u.onend = ()=> resolve();
+        u.onerror = (e)=> reject(e.error||new Error('Erreur TTS'));
+        window.speechSynthesis.speak(u);
+      });
+    }
+    const isSecureContextInfo = location.protocol === 'https:' || location.hostname === 'localhost';
+
+    async function requestMicrophonePermission(){
+      if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+        showPermHelp("Ce navigateur ne supporte pas l'accès micro.");
+        return false;
+      }
+      try{
+        const perm = await (navigator.permissions?.query?.({ name: 'microphone' }));
+        if(perm && perm.state === 'denied'){
+          showPermHelp('Permission micro refusée.');
+          return false;
+        }
+      }catch(_){ /* Permissions API non dispo */ }
+
+      try{
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        stream.getTracks().forEach(t=>t.stop());
+        hidePermHelp();
+        log('Micro autorisé.');
+        return true;
+      }catch(err){
+        log('Accès micro refusé: ' + (err?.name || err?.message || 'inconnu'));
+        showPermHelp('Accès micro refusé. Ouvrez les réglages et autorisez le site.');
+        return false;
+      }
+    }
+
+    function showPermHelp(msg){
+      const el = document.getElementById('permHelp');
+      if(!el) return;
+      const tips = [];
+      if(msg) tips.push(msg);
+      if(!isSecureContextInfo){ tips.push('Servez la page en HTTPS ou depuis localhost.'); }
+      tips.push("Chrome : copiez-collez dans la barre d'adresse : chrome://settings/content/microphone");
+      tips.push('Vérifiez que le site n’est pas dans « Bloqué » et que le bon micro est sélectionné.');
+      tips.push('macOS : Réglages Système → Confidentialité et Sécurité → Microphone → autoriser Chrome.');
+      tips.push('Windows : Paramètres → Confidentialité et sécurité → Microphone → autoriser les applications de bureau.');
+      el.innerHTML = '<ul style="margin:8px 0 0 18px; padding:0;">' + tips.map(t=>`<li>${t}</li>`).join('') + '</ul>';
+      el.style.display='block';
+    }
+    function hidePermHelp(){
+      const el = document.getElementById('permHelp');
+      if(el){ el.style.display='none'; el.innerHTML=''; }
+    }
+
+    // ---- Speech recognition ----
+    function getRecognition(){ const C = window.SpeechRecognition || window.webkitSpeechRecognition; return C ? new C() : null; }
+
+    function startRecognition(onKeyword){
+      const r = getRecognition();
+      if(!r){ setError('Reconnaissance vocale indisponible dans ce navigateur.'); log('Reconnaissance non supportée'); return ()=>{}; }
+      r.lang = langEl.value;
+      r.interimResults = true;
+      r.continuous = false; // iOS Safari ne gère pas bien le continu
+      const target = normalize(keywordEl.value||'');
+      const onResult = (ev)=>{
+        let heard='';
+        for(const res of ev.results){ heard += res[0]?.transcript || ''; }
+        const cleaned = normalize(heard);
+        log(`Entendu: "${cleaned}"`);
+        if(target && cleaned.includes(target)){
+          try{ r.onresult = null; r.onend=null; r.onerror=null; }catch{}
+          try{ r.stop(); }catch{}
+          onKeyword();
+        }
+      };
+      const onError = (e)=>{ log('Erreur reco: '+(e.error||'inconnue')); setError('Erreur de reconnaissance: '+(e.error||'inconnue')); setPhase(Phase.paused); };
+      const onEnd = ()=>{ if(phase===Phase.waiting){ try{ r.start(); }catch{} } };
+      r.onresult=onResult; r.onerror=onError; r.onend=onEnd;
+      try{ r.start(); rec=r; log('En écoute du mot-clé...'); }catch(e){ setError('Impossible de démarrer l\'écoute'); }
+      return ()=>{ try{ r.onresult=null; r.onend=null; r.onerror=null; r.stop(); r.abort(); }catch{} };
+    }
+
+    // ---- Flow control ----
+    async function runFrom(i){
+      if(!window.speechSynthesis){ setError('Synthèse vocale indisponible'); return; }
+      if(currentNumbers.length===0) return;
+      setPhase(Phase.speaking); currentIndex = i; renderPreview();
+      const token = currentNumbers[i];
+
+      // Afficher le nombre central en très grand
+      showCurrentDisplay(token);
+
+      try{
+        // Lire tel quel avec virgule décimale (convertir un éventuel point en virgule pour fr-FR)
+        await speak(token.replace('.',','));
+        setPhase(Phase.waiting);
+
+        // Pendant l'attente, garder l'affichage central visible
+        stopRec = startRecognition(()=>{
+          log('Mot-clé détecté → suivant');
+          const next = i+1;
+          if(next >= currentNumbers.length){
+            setPhase(Phase.done);
+            currentIndex = next;
+            try{ rec && rec.abort(); }catch{}
+            renderPreview();
+            hideCurrentDisplay(); // cacher une fois terminé
+          } else {
+            runFrom(next);
+          }
+        });
+      }catch(e){
+        setError('Erreur de lecture');
+        setPhase(Phase.paused);
+      }
+    }
+
+    async function start(){
+      setError('');
+      logEl.innerHTML='';
+      currentIndex=-1;
+      const granted = await requestMicrophonePermission();
+      if(!granted){
+        setPhase(Phase.paused);
+        return;
+      }
+      runFrom(0);
+    }
+
+    function pause(){ try{ window.speechSynthesis.cancel(); }catch{} try{ rec && rec.abort(); }catch{} setPhase(Phase.paused); }
+    function resume(){ if(phase!==Phase.paused) return; const idx = Math.max(0,currentIndex); runFrom(idx); }
+    function nextManual(){ try{ window.speechSynthesis.cancel(); }catch{} try{ rec && rec.abort(); }catch{} const next = Math.min(currentNumbers.length, (currentIndex<0?0:currentIndex+1)); if(next>=currentNumbers.length){ setPhase(Phase.done); currentIndex=next; renderPreview(); hideCurrentDisplay(); } else { runFrom(next); } }
+    function resetAll(){ try{ window.speechSynthesis.cancel(); }catch{} try{ rec && rec.abort(); }catch{} setPhase(Phase.idle); currentIndex=-1; logEl.innerHTML=''; setError(''); renderPreview(); hideCurrentDisplay(); }
+
+    // ---- Wire UI ----
+    numbersEl.addEventListener('input', updateNumbers);
+    langEl.addEventListener('change', ()=>{ /* voice may change */ });
+    rateEl.addEventListener('input', ()=>{ rateValEl.textContent = parseFloat(rateEl.value).toFixed(1); });
+
+    startBtn.addEventListener('click', start);
+    pauseBtn.addEventListener('click', pause);
+    resumeBtn.addEventListener('click', resume);
+    nextBtn.addEventListener('click', nextManual);
+    resetBtn.addEventListener('click', resetAll);
+
+    // Keep buttons state in sync via phase setter side effects
+    const _setPhase = setPhase; setPhase = function(p){ _setPhase(p); pauseBtn.disabled=!(phase===Phase.speaking||phase===Phase.waiting); resumeBtn.disabled=!(phase===Phase.paused); nextBtn.disabled=!(currentNumbers.length>0); };
+
+    // Init
+    updateNumbers(); setPhase(Phase.idle);
+  </script>
+</body>
+</html>
+
