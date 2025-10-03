@@ -342,14 +342,37 @@ function isRecognitionAvailable(){ return !!(window.SpeechRecognition || window.
       }
     }
 
-    async function start(){
-      if(!(location.protocol === 'https:' || location.hostname === 'localhost')){ setError('HTTPS requis. Ouvrez via GitHub Pages ou localhost.'); setPhase(Phase.paused); return; }
-      setError(''); logEl.innerHTML=''; currentIndex=-1;
-      if(!isRecognitionAvailable()){ setError('Reconnaissance vocale requise pour avancer. Utilisez Chrome/Edge sur HTTPS.'); setPhase(Phase.paused); return; }
-      const granted = await requestMicrophonePermission();
-      if(!granted){ setError('Micro requis pour contrôler l\'avancement. Autorisez le micro.'); showPermHelp('Autorisez le micro pour ce site.'); setPhase(Phase.paused); return; }
-      await waitForVoices(); runFrom(0);
+   async function start(){
+    if(!(location.protocol === 'https:' || location.hostname === 'localhost')){
+      setError('HTTPS requis. Ouvrez via GitHub Pages ou localhost.');
+      setPhase(Phase.paused);
+      return;
     }
+    setError('');
+    logEl.innerHTML='';
+    currentIndex = -1;
+    updateNumbers();
+    if(currentRows.length === 0) {
+      setError('Le tableau est vide.');
+      setPhase(Phase.idle);
+      return;
+    }
+    if(!isRecognitionAvailable()){
+      setError('Reconnaissance vocale requise pour avancer. Utilisez Chrome/Edge sur HTTPS.');
+      setPhase(Phase.paused);
+      return;
+    }
+    const granted = await requestMicrophonePermission();
+    if(!granted){
+      setError('Micro requis pour contrôler l\'avancement. Autorisez le micro.');
+      showPermHelp('Autorisez le micro pour ce site.');
+      setPhase(Phase.paused);
+    return;
+    }
+    await waitForVoices();
+    // Correction : démarre bien sur la première ligne
+    runFrom(0);
+  }
     function pause(){ try{ window.speechSynthesis.cancel(); }catch{} try{ rec && rec.abort(); }catch{} setPhase(Phase.paused); }
     function resume(){ if(phase!==Phase.paused) return; const idx = Math.max(0,currentIndex); runFrom(idx); }
     function nextManual(){ try{ window.speechSynthesis.cancel(); }catch{} try{ rec && rec.abort(); }catch{} const next = Math.min(currentRows.length, (currentIndex<0?0:currentIndex+1)); if(next>=currentRows.length){ setPhase(Phase.done); currentIndex=next; renderPreview(); hideCurrentDisplay(); } else { runFrom(next); } }
