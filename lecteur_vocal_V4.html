@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Lecteur vocal 2 colonnes – V3</title>
+  <style>
+    :root {
+      --bg: #0f172a; /* slate-900 */
+      --panel: #111827; /* gray-900 */
+      --muted: #94a3b8; /* slate-400 */
+      --text: #e5e7eb; /* gray-200 */
+      --accent: #60a5fa; /* blue-400 */
+      --ok: #34d399; /* emerald-400 */
+      --warn: #f59e0b; /* amber-500 */
+      --err: #f43f5e; /* rose-500 */
+    }
+    html, body { height: 100%; }
+    body {
+      margin: 0; background: var(--bg); color: var(--text);
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+      display: grid; grid-template-rows: auto 1fr auto; gap: 16px; padding: 16px;
+    }
+    header, footer, .panel { background: var(--panel); border: 1px solid #1f2937; border-radius: 16px; }
+    header, footer { padding: 12px 16px; }
+    header h1 { margin: 0; font-size: 18px; font-weight: 600; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    @media (max-width: 900px){ .grid { grid-template-columns: 1fr; } }
+
+    .panel { padding: 16px; }
+    .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .col { display: grid; gap: 12px; }
+
+    textarea, input, select, button { 
+      background: #0b1220; border: 1px solid #223045; color: var(--text); border-radius: 10px; 
+      padding: 10px 12px; font-size: 14px; outline: none; width: 100%;
+    }
+    textarea { min-height: 160px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+    button { cursor: pointer; width: auto; }
+    button.primary { background: #1d4ed8; border-color: #1d4ed8; }
+    button.ghost { background: transparent; border-color: #334155; }
+    button:disabled { opacity: .5; cursor: not-allowed; }
+
+    .status { font-size: 13px; color: var(--muted); }
+    .badge { padding: 4px 8px; border-radius: 999px; font-size: 12px; border: 1px solid #334155; }
+    .badge.ok{ color: #052e1a; background: #34d399; border-color: #10b981; }
+    .badge.warn{ color: #3a2403; background: #fbbf24; border-color: #f59e0b; }
+    .badge.err{ color: #4a0b13; background: #fda4af; border-color: #f43f5e; }
+
+    .stage {
+      display: grid; place-items: center; height: 48vh; border-radius: 20px; border: 1px dashed #334155;
+      background: #0b1220;
+    }
+    .current {
+      text-align: center; line-height: 1.1;
+    }
+    .label { font-size: clamp(18px, 3vw, 28px); color: var(--muted); margin-bottom: 8px; }
+    .value { font-size: clamp(64px, 12vw, 180px); font-weight: 800; letter-spacing: .02em; }
+
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid #1f2937; }
+    tr.active { background: #0b1a33; }
+
+    .mini { font-size: 12px; color: var(--muted); }
+    .spacer { height: 8px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Lecteur vocal 2 colonnes – V3</h1>
+    <div class="status" id="statusLine">Prêt.</div>
+  </header>
+
+  <div class="grid">
+    <section class="panel col" id="dataPanel">
+      <div class="row">
+        <div style="flex:1">
+          <label for="paste" class="mini">Collez ici depuis Excel (2 colonnes séparées par des tabulations). Exemple : « ech 1\t23,4 »</label>
+          <textarea id="paste" placeholder="ech 1\t23\nech 2\t10,2\nech 3\t2,3"></textarea>
+        </div>
+      </div>
+      <div class="row">
+        <button id="parseBtn" class="primary">Analyser</button>
+        <input type="file" id="csvFile" accept=".csv,.tsv,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.xls,.xlsx" />
+        <button id="loadCsvBtn" class="ghost">Charger fichier</button>
+        <span class="mini">Le fichier doit contenir 2 colonnes.</span>
+      </div>
+
+      <div class="spacer"></div>
+      <div class="row">
+        <div class="badge warn" id="recogBadge">Reco: inactif</div>
+        <div class="badge" id="synthBadge">TTS: inconnu</div>
+        <div class="badge" id="itemsBadge">0 lignes</div>
+      </div>
+
+      <div class="spacer"></div>
+      <div style="overflow:auto; max-height: 220px; border:1px solid #223045; border-radius: 12px;">
+        <table id="preview">
+          <thead><tr><th>#</th><th>Texte</th><th>Nombre</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <div class="spacer"></div>
+      <details>
+        <summary>Tests intégrés</summary>
+        <div class="row">
+          <button id="runTests" class="ghost">Exécuter les tests</button>
+          <span class="mini" id="testsStatus">Aucun test exécuté.</span>
+        </div>
+        <pre class="mini" id="testsLog" style="white-space:pre-wrap; max-height:160px; overflow:auto; border:1px solid #223045; padding:8px; border-radius:8px;"></pre>
+      </details>
+    </section>
+
+    <section class="panel col" id="controlPanel">
+      <div class="stage">
+        <div class="current">
+          <div class="label" id="currentLabel">—</div>
+          <div class="value" id="currentValue">—</div>
+        </div>
+      </div>
+
+      <div class="row">
+        <button id="startBtn" class="primary">Démarrer</button>
+        <button id="pauseBtn" class="ghost" disabled>Pause</button>
+        <button id="resumeBtn" class="ghost" disabled>Reprendre</button>
+        <button id="prevBtn" class="ghost" disabled>Précédent</button>
+        <button id="nextBtn" class="ghost" disabled>Suivant</button>
+        <button id="stopBtn" class="ghost" disabled>Stop</button>
+      </div>
+
+      <div class="spacer"></div>
+      <details>
+        <summary>Paramètres</summary>
+        <div class="row">
+          <label class="mini" style="width:180px">Mot déclencheur</label>
+          <input id="trigger" value="oui" style="max-width:220px" />
+          <label class="mini" style="width:180px">Langue</label>
+          <select id="lang" style="max-width:220px">
+            <option value="fr-FR" selected>fr-FR</option>
+            <option value="en-US">en-US</option>
+            <option value="es-ES">es-ES</option>
+            <option value="ar-SA">ar-SA</option>
+          </select>
+          <label class="mini" style="width:200px">Attente auto (s)</label>
+          <input id="autoDelay" type="number" min="5" max="900" value="120" style="max-width:140px" />
+        </div>
+        <div class="row">
+          <label class="mini" style="width:180px">Lire aussi le texte</label>
+          <select id="readLabel" style="max-width:220px">
+            <option value="yes" selected>oui</option>
+            <option value="no">non</option>
+          </select>
+          <label class="mini" style="width:180px">Volume</label>
+          <input id="volume" type="range" min="0" max="1" step="0.01" value="1" />
+          <label class="mini" style="width:180px">Vitesse</label>
+          <input id="rate" type="range" min="0.5" max="1.5" step="0.01" value="1" />
+        </div>
+      </details>
+    </section>
+  </div>
+
+  <footer>
+    <div class="mini">
+      Guide: collez vos données, cliquez Analyser, puis Démarrer. Dites « OUI » (modifiable) pour avancer. Le passage automatique déclenche après l'attente configurée.
+    </div>
+  </footer>
+
+<script>
+(function(){
+  /*** ÉTAT ***/
+  const state = {
+    items: /** @type {{label:string, raw:string, display:string, value:number|null}[]} */([]),
+    idx: -1,
+    speaking: false,
+    paused: false,
+    autoTimer: null,
+    recog: null,
+    recogActive: false,
+    voices: [],
+  };
+
+  /*** RÉFÉRENCES UI ***/
+  const el = (id)=>document.getElementById(id);
+  const paste = el('paste');
+  const parseBtn = el('parseBtn');
+  const csvFile = el('csvFile');
+  const loadCsvBtn = el('loadCsvBtn');
+  const itemsBadge = el('itemsBadge');
+  const recogBadge = el('recogBadge');
+  const synthBadge = el('synthBadge');
+  const tableBody = document.querySelector('#preview tbody');
+  const currentLabel = el('currentLabel');
+  const currentValue = el('currentValue');
+  const statusLine = el('statusLine');
+  const testsBtn = el('runTests');
+  const testsStatus = el('testsStatus');
+  const testsLog = el('testsLog');
+
+  const startBtn = el('startBtn');
+  const pauseBtn = el('pauseBtn');
+  const resumeBtn = el('resumeBtn');
+  const prevBtn = el('prevBtn');
+  const nextBtn = el('nextBtn');
+  const stopBtn = el('stopBtn');
+
+  const trigger = /** @type {HTMLInputElement} */(el('trigger'));
+  const lang = /** @type {HTMLSelectElement} */(el('lang'));
+  const autoDelay = /** @type {HTMLInputElement} */(el('autoDelay'));
+  const readLabel = /** @type {HTMLSelectElement} */(el('readLabel'));
+  const volume = /** @type {HTMLInputElement} */(el('volume'));
+  const rate = /** @type {HTMLInputElement} */(el('rate'));
+
+  /*** UTIL ***/
+  const setStatus = (t)=> statusLine.textContent = t;
+  const clampIdx = ()=> Math.min(Math.max(state.idx, 0), state.items.length-1);
+  const isEmpty = (v)=> v==null || String(v).trim()==="";
+
+  function normalizeDecimal(s, opts={preserveDisplay:false}){
+    if (typeof s !== 'string') s = String(s ?? '');
+    const original = s;
+    let numeric = s.trim();
+    // retirer espaces, NBSP (\u00A0) et espace fine insécable (\u202F) pour le PARSING uniquement
+    const __hasSpaceFlag = numeric.indexOf(' ')>=0;
+    // Affichage
+    const display = opts.preserveDisplay ? original.trim() : numeric.replace(/\./g, ',');
+    // Valeur numérique
+    const value = (()=>{
+      if (__hasSpaceFlag) return null;
+      const asNumber = numeric.replace(/,/g, '.');
+      const n = parseFloat(asNumber);
+      return Number.isFinite(n) ? n : null;
+    })();
+    return {display, value, raw: original};
+  }
+
+  function parseText(text){
+    /**
+     * Attend 2 colonnes par ligne, séparées par tabulation ou point-virgule, ou >=2 espaces.
+     * Exemples:
+     *   "ech 1\t23,4"  |  "ech 2;10.2"
+     */
+    const lines = text.split(/\r?\n/).filter(l=>l.trim().length>0);
+    const items = [];
+    for (let i=0;i<lines.length;i++){
+      const line = lines[i];
+      const parts = line.split(/\t|;|\s{2,}/); // tab, point-virgule, ou >=2 espaces
+      if (parts.length < 2) continue;
+      const label = parts[0].trim();
+      const nstr = parts.slice(1).join(' ').trim();
+      const {display, value, raw} = normalizeDecimal(nstr);
+      items.push({label, raw, display, value});
+    }
+    return items;
+  }
+
+  function renderTable(){
+    tableBody.innerHTML = '';
+    state.items.forEach((it, i)=>{
+      const tr = document.createElement('tr');
+      if (i===state.idx) tr.classList.add('active');
+      tr.innerHTML = `<td>${i+1}</td><td>${escapeHtml(it.label)}</td><td>${escapeHtml(it.display)}</td>`;
+      tableBody.appendChild(tr);
+    });
+    itemsBadge.textContent = `${state.items.length} lignes`;
+  }
+
+  function showCurrent(){
+    const it = state.items[state.idx] || {label:'—', display:'—'};
+    currentLabel.textContent = it.label || '—';
+    currentValue.textContent = it.display || '—';
+    renderTable();
+  }
+
+  function escapeHtml(s){
+    return String(s).replace(/[&<>"']/g, c=>({
+      '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'
+    })[c]);
+  }
+
+  /*** TTS ***/
+  function updateVoices(){
+    state.voices = window.speechSynthesis ? speechSynthesis.getVoices() : [];
+    const ok = state.voices && state.voices.length>0;
+    synthBadge.textContent = ok ? `TTS: ${state.voices.length} voix` : 'TTS: non dispo';
+  }
+  if ('speechSynthesis' in window){
+    updateVoices();
+    window.speechSynthesis.onvoiceschanged = updateVoices;
+  } else {
+    synthBadge.textContent = 'TTS: non supporté';
+  }
+
+  function pickVoice(langCode){
+    const list = state.voices;
+    if (!list || !list.length) return null;
+    return list.find(v=>v.lang===langCode) || list.find(v=>v.lang.startsWith(langCode.split('-')[0])) || list[0];
+  }
+
+  function speak(text){
+    if (!('speechSynthesis' in window)) return Promise.resolve();
+    window.speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    const v = pickVoice(lang.value);
+    if (v) u.voice = v;
+    u.lang = lang.value;
+    u.volume = parseFloat(volume.value);
+    u.rate = parseFloat(rate.value);
+    state.speaking = true;
+    return new Promise(res=>{
+      u.onend = ()=>{ state.speaking = false; res(); };
+      u.onerror = ()=>{ state.speaking = false; res(); };
+      speechSynthesis.speak(u);
+    });
+  }
+
+  async function speakCurrent(){
+    const it = state.items[state.idx];
+    if (!it) return;
+    const sayLabel = readLabel.value === 'yes' && it.label ? it.label + ', ' : '';
+    const phrase = `${sayLabel}${it.display}`;
+    await speak(phrase);
+  }
+
+  /*** AUTO AVANCE ***/
+  function clearAuto(){ if (state.autoTimer){ clearTimeout(state.autoTimer); state.autoTimer=null; } }
+  function scheduleAuto(){
+    clearAuto();
+    const ms = Math.max(5, Number(autoDelay.value||120)) * 1000;
+    state.autoTimer = setTimeout(()=>{
+      setStatus('Avance auto');
+      next();
+    }, ms);
+  }
+
+  /*** RECO VOCAL ***/
+  function setupRecog(){
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR){ recogBadge.textContent = 'Reco: non supportée'; return; }
+    if (state.recog) return;
+    const r = new SR();
+    r.continuous = true;
+    r.interimResults = false;
+    r.lang = lang.value;
+    r.onstart = ()=>{ state.recogActive = true; recogBadge.textContent='Reco: active'; };
+    r.onend = ()=>{ state.recogActive = false; recogBadge.textContent='Reco: stoppée'; if (state.idx>=0){ tryStartRecog(); } };
+    r.onerror = (e)=>{ recogBadge.textContent = 'Reco: erreur'; console.warn('Reco error', e); };
+    r.onresult = (evt)=>{
+      for (let i=evt.resultIndex;i<evt.results.length;i++){
+        const t = evt.results[i][0].transcript.trim().toLowerCase();
+        const wanted = (trigger.value||'').trim().toLowerCase();
+        if (!wanted) continue;
+        if (t.includes(wanted)){
+          setStatus(`Détecté: ${t}`);
+          next();
+          return;
+        }
+      }
+    };
+    state.recog = r;
+  }
+
+  function tryStartRecog(){
+    if (!state.recog){ setupRecog(); }
+    if (!state.recog) return;
+    try { if (!state.recogActive){ state.recog.start(); } } catch(e){}
+  }
+
+  function stopRecog(){
+    if (state.recog && state.recogActive){ try{ state.recog.stop(); }catch(e){} }
+  }
+
+  /*** CONTRÔLES ***/
+  function updateControls(){
+    const hasItems = state.items.length>0;
+    const running = state.idx>=0;
+    startBtn.disabled = !hasItems || running;
+    pauseBtn.disabled = !running || state.paused;
+    resumeBtn.disabled = !running || !state.paused;
+    prevBtn.disabled = !running || state.idx<=0;
+    nextBtn.disabled = !running || state.idx>=state.items.length-1;
+    stopBtn.disabled = !running;
+  }
+
+  async function start(){
+    if (state.items.length===0){ setStatus('Aucune donnée'); return; }
+    state.idx = 0;
+    state.paused = false;
+    showCurrent();
+    updateControls();
+    tryStartRecog();
+    await speakCurrent();
+    scheduleAuto();
+  }
+
+  function pause(){
+    state.paused = true; clearAuto();
+    window.speechSynthesis && window.speechSynthesis.cancel();
+    stopRecog();
+    setStatus('Pause');
+    updateControls();
+  }
+
+  async function resume(){
+    if (state.idx<0) return;
+    state.paused = false;
+    updateControls();
+    tryStartRecog();
+    await speakCurrent();
+    scheduleAuto();
+  }
+
+  async function prev(){
+    if (state.idx<=0) return;
+    state.idx--; showCurrent(); updateControls(); clearAuto();
+    await speakCurrent(); scheduleAuto();
+  }
+
+  async function next(){
+    if (state.idx>=state.items.length-1){ stop(); return; }
+    state.idx++; showCurrent(); updateControls(); clearAuto();
+    await speakCurrent(); scheduleAuto();
+  }
+
+  function stop(){
+    clearAuto();
+    window.speechSynthesis && window.speechSynthesis.cancel();
+    stopRecog();
+    state.idx = -1; state.paused=false; showCurrent(); updateControls();
+    setStatus('Arrêté');
+  }
+
+  /*** IMPORT ***/
+  function loadFromTextarea(){
+    const text = paste.value || '';
+    const items = parseText(text);
+    state.items = items;
+    state.idx = -1;
+    showCurrent(); updateControls();
+    setStatus(items.length? 'Données chargées' : 'Aucune ligne valide');
+  }
+
+  function readFile(file){
+    return new Promise((res, rej)=>{
+      const r = new FileReader();
+      r.onload = ()=>res(String(r.result||''));
+      r.onerror = rej;
+      r.readAsText(file, 'utf-8');
+    });
+  }
+
+  function detectDelimiter(sample){
+    const lines = sample.split(/\r?\n/).filter(l=>l.trim().length>0).slice(0,5);
+    const scores = { ',':0, ';':0, '\t':0, '|':0 };
+    for (const l of lines){
+      scores[','] += (l.match(/,/g)||[]).length;
+      scores[';'] += (l.match(/;/g)||[]).length;
+      scores['\\t'] += (l.match(/\t/g)||[]).length;
+      scores['|'] += (l.match(/\|/g)||[]).length;
+    }
+    let best = Object.entries(scores).sort((a,b)=>b[1]-a[1])[0];
+    let delim = best && best[1]>0 ? (best[0]==='\\t' ? '\t' : best[0]) : ';';
+    return delim;
+  }
+
+  function parseCSVLine(line, d){
+    const out=[]; let cur=''; let inQ=false; let i=0;
+    while(i<line.length){
+      const ch=line[i];
+      if (ch==='"'){
+        if (inQ && line[i+1]==='"'){ cur+='"'; i+=2; continue; }
+        inQ = !inQ; i++; continue;
+      }
+      if (ch===d && !inQ){ out.push(cur); cur=''; i++; continue; }
+      cur+=ch; i++;
+    }
+    out.push(cur);
+    return out;
+  }
+
+  async function loadCsv(){
+    const f = csvFile.files && csvFile.files[0];
+    if (!f){ setStatus('Choisissez un fichier'); return; }
+
+    const name = (f.name||'').toLowerCase();
+    const isExcel = name.endsWith('.xlsx') || name.endsWith('.xls');
+
+    if (isExcel){
+      async function ensureXLSX(){
+        if (window.XLSX) return;
+        await new Promise((res, rej)=>{
+          const s = document.createElement('script');
+          s.src = 'https://cdn.jsdelivr.net/npm/xlsx@0.19.3/dist/xlsx.full.min.js';
+          s.onload = ()=>res();
+          s.onerror = rej;
+          document.head.appendChild(s);
+        });
+      }
+      try{
+        await ensureXLSX();
+        const buf = await f.arrayBuffer();
+        const wb = XLSX.read(buf, {type:'array'});
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(ws, {header:1, raw:true});
+        const items = [];
+        for (const r of rows){
+          if (!r || r.length<2) continue;
+          const label = String(r[0] ?? '').trim();
+          const nstrRaw = String(r[1] ?? '').trim();
+          if (!label || !nstrRaw) continue;
+          const {display, value, raw} = normalizeDecimal(nstrRaw, {preserveDisplay:true});
+          items.push({label, raw, display, value});
+        }
+        state.items = items; state.idx=-1; showCurrent(); updateControls();
+        setStatus(items.length? 'Feuille Excel chargée' : 'Aucune ligne valide');
+        return;
+      } catch(e){
+        console.warn(e); setStatus('Erreur de lecture XLS/XLSX');
+      }
+    }
+
+    // Fichiers texte: CSV/TSV
+    const text = await readFile(f);
+    const delim = detectDelimiter(text);
+    const lines = text.split(/\r?\n/).filter(l=>l.trim().length>0);
+    const items = [];
+    for (const line of lines){
+      const parts = parseCSVLine(line, delim);
+      if (parts.length<2) continue;
+      const label = String(parts[0]).trim().replace(/^"|"$/g,'');
+      const nstrRaw = String(parts[1]).trim().replace(/^"|"$/g,'');
+      if (!label || !nstrRaw) continue;
+      const {display, value, raw} = normalizeDecimal(nstrRaw, {preserveDisplay:true});
+      items.push({label, raw, display, value});
+    }
+    state.items = items; state.idx=-1; showCurrent(); updateControls();
+    setStatus(items.length? 'Fichier chargé' : 'Aucune ligne valide');
+  }
+
+  /*** ÉVÉNEMENTS ***/
+  parseBtn.addEventListener('click', loadFromTextarea);
+  loadCsvBtn.addEventListener('click', loadCsv);
+
+  startBtn.addEventListener('click', start);
+  pauseBtn.addEventListener('click', pause);
+  resumeBtn.addEventListener('click', resume);
+  prevBtn.addEventListener('click', prev);
+  nextBtn.addEventListener('click', next);
+  stopBtn.addEventListener('click', stop);
+
+  lang.addEventListener('change', ()=>{
+    if (state.recog){ try{ state.recog.stop(); }catch(e){} state.recog.lang = lang.value; tryStartRecog(); }
+  });
+
+  // Coller = analyser direct
+  paste.addEventListener('paste', ()=>{ setTimeout(()=>{ loadFromTextarea(); }, 0); });
+
+  // Raccourcis clavier
+  document.addEventListener('keydown', (e)=>{
+    if (state.idx<0) return;
+    if (e.key==='ArrowRight'){ e.preventDefault(); next(); }
+    if (e.key==='ArrowLeft'){ e.preventDefault(); prev(); }
+    if (e.key.toLowerCase()===' '){ e.preventDefault(); state.paused? resume(): pause(); }
+  });
+
+  // Détection permissions micro basique
+  if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia){
+    navigator.mediaDevices.getUserMedia({audio:true}).then(()=>{
+      recogBadge.textContent = 'Reco: micro autorisé';
+    }).catch(()=>{
+      recogBadge.textContent = 'Reco: micro bloqué';
+    });
+  }
+
+  // TESTS
+  function runTests(){
+    const logs=[]; const ok=(m)=>logs.push('✔ ' + m); const ko=(m)=>logs.push('✖ ' + m);
+    function assert(cond, msg){ if(!cond) throw new Error(msg); }
+    try{
+      // Test 1: split lignes
+      const sample = 'a,b\n c,d\r\n e,f';
+      const lines = sample.split(/\r?\n/); assert(lines.length===3, 'Découpage CRLF/ LF'); ok('Découpage CRLF/ LF');
+
+      // Test 2: detectDelimiter
+      const d1 = detectDelimiter('x;y\na;b'); assert(d1===';', 'Délimiteur ";"'); ok('Detect ;');
+      const d2 = detectDelimiter('x,y\na,b'); assert(d2===',', 'Délimiteur ","'); ok('Detect ,');
+      const d3 = detectDelimiter('x\t1\ny\t2'); assert(d3==='\t', 'Délimiteur TAB'); ok('Detect TAB');
+
+      // Test 3: parseCSVLine avec guillemets
+      const p = parseCSVLine('ech 1,"23,4"', ','); assert(p[0]==='ech 1' && p[1]==='23,4', 'CSV guillemets conservés'); ok('CSV quotes');
+
+      // Test 4: normalizeDecimal preserve display
+      const nd = normalizeDecimal('23,4', {preserveDisplay:true}); assert(nd.display==='23,4' && nd.value===23.4, 'Virgule préservée'); ok('Virgule préservée CSV');
+
+      // Test 5: normalizeDecimal supprime séparateur milliers fin/nbsp côté parsing
+      const nd2 = normalizeDecimal('1 234,5', {preserveDisplay:true}); assert(nd2.value===null, 'Espaces de milliers -> invalide'); ok('Espaces -> invalide');
+
+      // Test 6: parseText depuis collage TSV et point décimal -> affichage virgule
+      const parsed = parseText('ech 2\t10.2'); assert(parsed[0].display==='10,2', 'Point -> virgule en collage'); ok('Collage . => ,');
+
+      testsStatus.textContent = 'Tests réussis';
+      testsStatus.className = 'mini';
+    } catch(err){
+      ko(err.message || String(err));
+      testsStatus.textContent = 'Tests en échec';
+      testsStatus.className = 'mini';
+    } finally {
+      testsLog.textContent = logs.join('\n');
+    }
+  }
+
+  if (testsBtn){ testsBtn.addEventListener('click', runTests); }
+
+  setStatus('Prêt. Collez vos données, puis Analyser.');
+  showCurrent(); updateControls();
+})();
+</script>
+</body>
+</html>
