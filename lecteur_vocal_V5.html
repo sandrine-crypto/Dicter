@@ -1,0 +1,992 @@
+
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Lecteur vocal panoramique – V5</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --panel: #111827;
+      --muted: #94a3b8;
+      --text: #e5e7eb;
+      --accent: #60a5fa;
+      --ok: #34d399;
+      --warn: #f59e0b;
+      --err: #f43f5e;
+      --border: #1f2937;
+      --panel-border: #223045;
+    }
+
+    html, body {
+      height: 100%;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu, Cantarell, "Noto Sans", Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      gap: 20px;
+      padding: 20px;
+      box-sizing: border-box;
+    }
+
+    header, footer, .panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+    }
+
+    header, footer {
+      padding: 14px 20px;
+    }
+
+    header h1 {
+      margin: 0;
+      font-size: 20px;
+      font-weight: 600;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1.8fr) minmax(300px, 1fr);
+      gap: 20px;
+      min-height: 0;
+    }
+
+    .panel {
+      padding: 20px;
+      display: grid;
+      gap: 16px;
+      min-height: 0;
+    }
+
+    .panel.reading {
+      grid-template-rows: auto auto auto 1fr;
+    }
+
+    .panel.data {
+      grid-template-rows: auto auto auto 1fr auto;
+    }
+
+    .row {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .row.fill > * {
+      flex: 1 1 auto;
+    }
+
+    .col {
+      display: grid;
+      gap: 12px;
+    }
+
+    textarea, input, select, button {
+      background: #0b1220;
+      border: 1px solid var(--panel-border);
+      color: var(--text);
+      border-radius: 12px;
+      padding: 12px 14px;
+      font-size: 15px;
+      outline: none;
+      width: 100%;
+      box-sizing: border-box;
+    }
+
+    textarea {
+      min-height: 220px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    }
+
+    button {
+      cursor: pointer;
+      width: auto;
+    }
+
+    button.primary {
+      background: #1d4ed8;
+      border-color: #1d4ed8;
+    }
+
+    button.ghost {
+      background: transparent;
+      border-color: #334155;
+    }
+
+    button:disabled {
+      opacity: .5;
+      cursor: not-allowed;
+    }
+
+    .status {
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    .badge {
+      padding: 5px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      border: 1px solid #334155;
+      background: #0b1220;
+    }
+
+    .badge.ok {
+      color: #052e1a;
+      background: var(--ok);
+      border-color: #10b981;
+    }
+
+    .badge.warn {
+      color: #3a2403;
+      background: #fbbf24;
+      border-color: var(--warn);
+    }
+
+    .badge.err {
+      color: #4a0b13;
+      background: #fda4af;
+      border-color: var(--err);
+    }
+
+    .stage {
+      display: grid;
+      place-items: center;
+      min-height: clamp(320px, 70vh, 720px);
+      border-radius: 24px;
+      border: 1px dashed #334155;
+      background: #0b1220;
+      padding: 30px;
+      box-shadow: inset 0 0 40px rgba(15, 23, 42, 0.6);
+    }
+
+    .current {
+      text-align: center;
+      line-height: 1.1;
+      display: grid;
+      gap: 12px;
+    }
+
+    .label {
+      font-size: clamp(48px, 6vw, 160px);
+      color: var(--muted);
+      font-weight: 600;
+      letter-spacing: 0.02em;
+    }
+
+    .value {
+      font-size: clamp(72px, 9vw, 200px);
+      font-weight: 800;
+      letter-spacing: .02em;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+    }
+
+    th, td {
+      text-align: left;
+      padding: 8px 6px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    thead th {
+      position: sticky;
+      top: 0;
+      background: #111d36;
+      z-index: 1;
+    }
+
+    tr.active {
+      background: #0b1a33;
+    }
+
+    .table-wrap {
+      border: 1px solid var(--panel-border);
+      border-radius: 14px;
+      overflow: hidden;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .table-scroll {
+      overflow: auto;
+      max-height: none;
+      flex: 1 1 auto;
+    }
+
+    .mini {
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    details summary {
+      cursor: pointer;
+    }
+
+    details[open] summary {
+      color: var(--accent);
+    }
+
+    .spacer {
+      height: 8px;
+    }
+
+    footer .mini {
+      line-height: 1.5;
+    }
+
+    @media (max-width: 1200px) {
+      .layout {
+        grid-template-columns: 1fr;
+      }
+
+      .panel.reading {
+        grid-template-rows: auto auto auto auto;
+      }
+
+      .stage {
+        min-height: clamp(280px, 60vh, 620px);
+      }
+    }
+
+    @media (max-width: 640px) {
+      body {
+        padding: 16px;
+        gap: 16px;
+      }
+
+      header, footer {
+        padding: 12px 16px;
+      }
+
+      .panel {
+        padding: 16px;
+      }
+
+      textarea {
+        min-height: 180px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Lecteur vocal panoramique – V5</h1>
+    <div class="status" id="statusLine">Prêt.</div>
+  </header>
+
+  <main class="layout">
+    <section class="panel reading" id="controlPanel">
+      <div class="stage">
+        <div class="current">
+          <div class="label" id="currentLabel">—</div>
+          <div class="value" id="currentValue">—</div>
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="badge warn" id="recogBadge">Reco: inactif</div>
+        <div class="badge" id="synthBadge">TTS: inconnu</div>
+        <div class="badge" id="itemsBadge">0 lignes</div>
+      </div>
+
+      <div class="row">
+        <button id="startBtn" class="primary">Démarrer</button>
+        <button id="pauseBtn" class="ghost" disabled>Pause</button>
+        <button id="resumeBtn" class="ghost" disabled>Reprendre</button>
+        <button id="prevBtn" class="ghost" disabled>Précédent</button>
+        <button id="nextBtn" class="ghost" disabled>Suivant</button>
+        <button id="stopBtn" class="ghost" disabled>Stop</button>
+      </div>
+
+      <details>
+        <summary>Paramètres avancés</summary>
+        <div class="row fill">
+          <label class="mini" style="min-width:160px; flex:0 0 auto;">Mot déclencheur</label>
+          <input id="trigger" value="oui" style="max-width:220px" />
+        </div>
+        <div class="row fill">
+          <label class="mini" style="min-width:160px; flex:0 0 auto;">Langue</label>
+          <select id="lang" style="max-width:220px">
+            <option value="fr-FR" selected>fr-FR</option>
+            <option value="en-US">en-US</option>
+            <option value="es-ES">es-ES</option>
+            <option value="ar-SA">ar-SA</option>
+          </select>
+        </div>
+        <div class="row fill">
+          <label class="mini" style="min-width:160px; flex:0 0 auto;">Attente auto (s)</label>
+          <input id="autoDelay" type="number" min="5" max="900" value="120" style="max-width:140px" />
+        </div>
+        <div class="row fill">
+          <label class="mini" style="min-width:160px; flex:0 0 auto;">Lire aussi le texte</label>
+          <select id="readLabel" style="max-width:220px">
+            <option value="yes" selected>oui</option>
+            <option value="no">non</option>
+          </select>
+        </div>
+        <div class="row fill">
+          <label class="mini" style="min-width:160px; flex:0 0 auto;">Volume</label>
+          <input id="volume" type="range" min="0" max="1" step="0.01" value="1" />
+        </div>
+        <div class="row fill">
+          <label class="mini" style="min-width:160px; flex:0 0 auto;">Vitesse</label>
+          <input id="rate" type="range" min="0.5" max="1.5" step="0.01" value="1" />
+        </div>
+      </details>
+    </section>
+
+    <section class="panel data" id="dataPanel">
+      <div class="col">
+        <label for="paste" class="mini">Collez ici depuis Excel (2 colonnes séparées par des tabulations). Exemple : « ech 1\t23,4 »</label>
+        <textarea id="paste" placeholder="ech 1\t23\nech 2\t10,2\nech 3\t2,3"></textarea>
+      </div>
+
+      <div class="row">
+        <button id="parseBtn" class="primary">Analyser</button>
+        <input type="file" id="csvFile" accept=".csv,.tsv,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.xls,.xlsx" />
+        <button id="loadCsvBtn" class="ghost">Charger fichier</button>
+      </div>
+
+      <div class="mini">Le fichier doit contenir 2 colonnes.</div>
+
+      <div class="table-wrap">
+        <div class="mini" style="padding: 10px 14px; border-bottom: 1px solid var(--panel-border); background:#0c1628;">Aperçu des données</div>
+        <div class="table-scroll">
+          <table id="preview">
+            <thead><tr><th>#</th><th>Texte</th><th>Nombre</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+
+      <details>
+        <summary>Tests intégrés</summary>
+        <div class="row">
+          <button id="runTests" class="ghost">Exécuter les tests</button>
+          <span class="mini" id="testsStatus">Aucun test exécuté.</span>
+        </div>
+        <pre class="mini" id="testsLog" style="white-space:pre-wrap; max-height:200px; overflow:auto; border:1px solid var(--panel-border); padding:10px; border-radius:10px;"></pre>
+      </details>
+    </section>
+  </main>
+
+  <footer>
+    <div class="mini">
+      Guide: collez vos données, cliquez Analyser, puis Démarrer. Dites « OUI » (modifiable) pour avancer. Le passage automatique déclenche après l'attente configurée.
+    </div>
+  </footer>
+
+<script>
+(function(){
+  /*** ÉTAT GLOBAL ***/
+  const state = {
+    items: /** @type {{label:string, raw:string, display:string, value:number|null}[]} */([]),
+    idx: -1,
+    paused: false,
+    speaking: false,
+    autoTimer: null,
+    recognizer: null,
+    listening: false,
+    listenDesired: false,
+    restartTimer: null,
+    voices: [],
+  };
+
+  /*** RÉFÉRENCES DOM ***/
+  const el = (id) => document.getElementById(id);
+  const paste = el('paste');
+  const parseBtn = el('parseBtn');
+  const csvFile = el('csvFile');
+  const loadCsvBtn = el('loadCsvBtn');
+  const itemsBadge = el('itemsBadge');
+  const recogBadge = el('recogBadge');
+  const synthBadge = el('synthBadge');
+  const tableBody = document.querySelector('#preview tbody');
+  const currentLabel = el('currentLabel');
+  const currentValue = el('currentValue');
+  const statusLine = el('statusLine');
+  const testsBtn = el('runTests');
+  const testsStatus = el('testsStatus');
+  const testsLog = el('testsLog');
+
+  const startBtn = el('startBtn');
+  const pauseBtn = el('pauseBtn');
+  const resumeBtn = el('resumeBtn');
+  const prevBtn = el('prevBtn');
+  const nextBtn = el('nextBtn');
+  const stopBtn = el('stopBtn');
+
+  const trigger = /** @type {HTMLInputElement} */(el('trigger'));
+  const lang = /** @type {HTMLSelectElement} */(el('lang'));
+  const autoDelay = /** @type {HTMLInputElement} */(el('autoDelay'));
+  const readLabel = /** @type {HTMLSelectElement} */(el('readLabel'));
+  const volume = /** @type {HTMLInputElement} */(el('volume'));
+  const rate = /** @type {HTMLInputElement} */(el('rate'));
+
+  /*** OUTILS ***/
+  const setStatus = (t) => statusLine.textContent = t;
+  const clampIdx = () => Math.min(Math.max(state.idx, 0), state.items.length - 1);
+
+  function escapeHtml(s){
+    return String(s).replace(/[&<>"']/g, (c) => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    })[c]);
+  }
+
+  function normalizeDecimal(input, opts = {preserveDisplay:false}){
+    let s = typeof input === 'string' ? input : String(input ?? '');
+    const original = s;
+    const trimmed = s.trim();
+    const containsSpace = /[ \u00A0\u202F]/.test(trimmed);
+    const display = opts.preserveDisplay ? trimmed : trimmed.replace(/\./g, ',');
+    const value = (() => {
+      if (containsSpace) return null;
+      const normalized = trimmed.replace(/,/g, '.');
+      const num = parseFloat(normalized);
+      return Number.isFinite(num) ? num : null;
+    })();
+    return { display, value, raw: original };
+  }
+
+  function parseText(text){
+    const lines = text.split(/\r?\n/).filter(l => l.trim().length > 0);
+    const items = [];
+    for (const line of lines){
+      const parts = line.split(/\t|;|\s{2,}/);
+      if (parts.length < 2) continue;
+      const label = parts[0].trim();
+      const numberRaw = parts.slice(1).join(' ').trim();
+      const { display, value, raw } = normalizeDecimal(numberRaw);
+      items.push({ label, display, value, raw });
+    }
+    return items;
+  }
+
+  function renderTable(){
+    tableBody.innerHTML = '';
+    state.items.forEach((item, index) => {
+      const tr = document.createElement('tr');
+      if (index === state.idx) tr.classList.add('active');
+      tr.innerHTML = `<td>${index + 1}</td><td>${escapeHtml(item.label)}</td><td>${escapeHtml(item.display)}</td>`;
+      tableBody.appendChild(tr);
+    });
+    itemsBadge.textContent = `${state.items.length} lignes`;
+  }
+
+  function showCurrent(){
+    const current = state.items[state.idx] || { label: '—', display: '—' };
+    currentLabel.textContent = current.label || '—';
+    currentValue.textContent = current.display || '—';
+    renderTable();
+  }
+
+  /*** TTS ***/
+  function updateVoices(){
+    state.voices = window.speechSynthesis ? speechSynthesis.getVoices() : [];
+    const ok = state.voices && state.voices.length > 0;
+    synthBadge.textContent = ok ? `TTS: ${state.voices.length} voix` : 'TTS: non dispo';
+  }
+  if ('speechSynthesis' in window){
+    updateVoices();
+    window.speechSynthesis.onvoiceschanged = updateVoices;
+  } else {
+    synthBadge.textContent = 'TTS: non supporté';
+  }
+
+  function pickVoice(langCode){
+    const list = state.voices;
+    if (!list || !list.length) return null;
+    return list.find(v => v.lang === langCode) || list.find(v => v.lang.startsWith(langCode.split('-')[0])) || list[0];
+  }
+
+  function speak(text){
+    if (!('speechSynthesis' in window)) return Promise.resolve();
+    state.speaking = true;
+    suspendListening(true);
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    const voice = pickVoice(lang.value);
+    if (voice) utterance.voice = voice;
+    utterance.lang = lang.value;
+    utterance.volume = parseFloat(volume.value);
+    utterance.rate = parseFloat(rate.value);
+
+    if (state.listenDesired){
+      recogBadge.textContent = 'Reco: en attente';
+    }
+
+    return new Promise((resolve) => {
+      const finalize = () => {
+        state.speaking = false;
+        if (state.listenDesired && !state.paused && state.idx >= 0){
+          scheduleRecogRestart(150);
+        }
+        resolve();
+      };
+      utterance.onend = finalize;
+      utterance.onerror = finalize;
+      try {
+        speechSynthesis.speak(utterance);
+      } catch(err){
+        console.warn('speechSynthesis.speak failed', err);
+        finalize();
+      }
+    });
+  }
+
+  async function speakCurrent(){
+    const item = state.items[state.idx];
+    if (!item) return;
+    const sayLabel = readLabel.value === 'yes' && item.label ? item.label + ', ' : '';
+    await speak(`${sayLabel}${item.display}`);
+  }
+
+  /*** AVANCE AUTOMATIQUE ***/
+  function clearAuto(){
+    if (state.autoTimer){
+      clearTimeout(state.autoTimer);
+      state.autoTimer = null;
+    }
+  }
+
+  function scheduleAuto(){
+    clearAuto();
+    const seconds = Math.max(5, Number(autoDelay.value || 120));
+    state.autoTimer = setTimeout(() => {
+      setStatus('Avance auto');
+      next();
+    }, seconds * 1000);
+  }
+
+  /*** RECONNAISSANCE VOCALE ***/
+  function ensureRecognizer(){
+    if (state.recognizer) return state.recognizer;
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR){
+      recogBadge.textContent = 'Reco: non supportée';
+      return null;
+    }
+    const r = new SR();
+    r.continuous = true;
+    r.interimResults = false;
+    r.lang = lang.value;
+    r.onstart = () => {
+      state.listening = true;
+      recogBadge.textContent = 'Reco: active';
+    };
+    r.onerror = (event) => {
+      console.warn('Reconnaissance vocale erreur', event);
+      recogBadge.textContent = 'Reco: erreur';
+    };
+    r.onend = () => {
+      state.listening = false;
+      if (!state.listenDesired){
+        recogBadge.textContent = 'Reco: inactif';
+        return;
+      }
+      if (state.speaking || state.paused || state.idx < 0){
+        recogBadge.textContent = 'Reco: en attente';
+        return;
+      }
+      scheduleRecogRestart(200);
+    };
+    r.onresult = (evt) => {
+      for (let i = evt.resultIndex; i < evt.results.length; i++){
+        const transcript = evt.results[i][0].transcript.trim().toLowerCase();
+        const wanted = (trigger.value || '').trim().toLowerCase();
+        if (!wanted) continue;
+        if (transcript.includes(wanted)){
+          setStatus(`Détecté: ${transcript}`);
+          next();
+          return;
+        }
+      }
+    };
+    state.recognizer = r;
+    return r;
+  }
+
+  function scheduleRecogRestart(delay){
+    if (state.restartTimer){
+      clearTimeout(state.restartTimer);
+    }
+    state.restartTimer = setTimeout(() => {
+      state.restartTimer = null;
+      startListening(true);
+    }, Math.max(50, delay || 150));
+  }
+
+  function startListening(force = false){
+    if (!force && !state.listenDesired) return;
+    const r = ensureRecognizer();
+    if (!r) return;
+    if (state.listening) return;
+    if ((state.speaking || state.paused || state.idx < 0) && !force){
+      recogBadge.textContent = 'Reco: en attente';
+      return;
+    }
+    try {
+      r.lang = lang.value;
+      r.start();
+    } catch(err){
+      if (err && err.name === 'InvalidStateError'){
+        scheduleRecogRestart(400);
+      } else {
+        console.warn('Échec start recognition', err);
+      }
+    }
+  }
+
+  function suspendListening(keepIntent){
+    if (!keepIntent){
+      state.listenDesired = false;
+    }
+    if (state.restartTimer){
+      clearTimeout(state.restartTimer);
+      state.restartTimer = null;
+    }
+    if (state.recognizer && state.listening){
+      try { state.recognizer.stop(); } catch(err){ console.warn('stop recognition', err); }
+    }
+    if (!keepIntent){
+      recogBadge.textContent = 'Reco: inactif';
+    } else if (state.speaking){
+      recogBadge.textContent = 'Reco: en attente';
+    }
+  }
+
+  /*** CONTRÔLES LECTURE ***/
+  function updateControls(){
+    const hasItems = state.items.length > 0;
+    const running = state.idx >= 0;
+    startBtn.disabled = !hasItems || running;
+    pauseBtn.disabled = !running || state.paused;
+    resumeBtn.disabled = !running || !state.paused;
+    prevBtn.disabled = !running || state.idx <= 0;
+    nextBtn.disabled = !running || state.idx >= state.items.length - 1;
+    stopBtn.disabled = !running;
+  }
+
+  async function start(){
+    if (!state.items.length){
+      setStatus('Aucune donnée');
+      return;
+    }
+    state.idx = 0;
+    state.paused = false;
+    state.listenDesired = true;
+    showCurrent();
+    updateControls();
+    await speakCurrent();
+    startListening();
+    scheduleAuto();
+  }
+
+  function pause(){
+    state.paused = true;
+    clearAuto();
+    if (window.speechSynthesis){
+      window.speechSynthesis.cancel();
+    }
+    suspendListening(false);
+    setStatus('Pause');
+    updateControls();
+  }
+
+  async function resume(){
+    if (state.idx < 0) return;
+    state.paused = false;
+    state.listenDesired = true;
+    updateControls();
+    await speakCurrent();
+    startListening();
+    scheduleAuto();
+  }
+
+  async function prev(){
+    if (state.idx <= 0) return;
+    state.idx--;
+    showCurrent();
+    updateControls();
+    clearAuto();
+    state.listenDesired = true;
+    await speakCurrent();
+    startListening();
+    scheduleAuto();
+  }
+
+  async function next(){
+    if (state.idx >= state.items.length - 1){
+      stop();
+      return;
+    }
+    state.idx++;
+    showCurrent();
+    updateControls();
+    clearAuto();
+    state.listenDesired = true;
+    await speakCurrent();
+    startListening();
+    scheduleAuto();
+  }
+
+  function stop(){
+    clearAuto();
+    if (window.speechSynthesis){
+      window.speechSynthesis.cancel();
+    }
+    suspendListening(false);
+    state.idx = -1;
+    state.paused = false;
+    showCurrent();
+    updateControls();
+    setStatus('Arrêté');
+  }
+
+  /*** IMPORT DONNÉES ***/
+  function loadFromTextarea(){
+    const text = paste.value || '';
+    state.items = parseText(text);
+    state.idx = -1;
+    showCurrent();
+    updateControls();
+    setStatus(state.items.length ? 'Données chargées' : 'Aucune ligne valide');
+  }
+
+  function readFile(file){
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ''));
+      reader.onerror = reject;
+      reader.readAsText(file, 'utf-8');
+    });
+  }
+
+  function detectDelimiter(sample){
+    const lines = sample.split(/\r?\n/).filter(l => l.trim().length > 0).slice(0, 5);
+    const scores = { ',':0, ';':0, '\\t':0, '|':0 };
+    for (const line of lines){
+      scores[','] += (line.match(/,/g) || []).length;
+      scores[';'] += (line.match(/;/g) || []).length;
+      scores['\\t'] += (line.match(/\t/g) || []).length;
+      scores['|'] += (line.match(/\|/g) || []).length;
+    }
+    const best = Object.entries(scores).sort((a, b) => b[1] - a[1])[0];
+    if (!best || best[1] === 0) return ';';
+    return best[0] === '\\t' ? '\t' : best[0];
+  }
+
+  function parseCSVLine(line, delimiter){
+    const out = [];
+    let current = '';
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i++){
+      const ch = line[i];
+      if (ch === '"'){
+        if (inQuotes && line[i + 1] === '"'){
+          current += '"';
+          i++;
+          continue;
+        }
+        inQuotes = !inQuotes;
+        continue;
+      }
+      if (ch === delimiter && !inQuotes){
+        out.push(current);
+        current = '';
+        continue;
+      }
+      current += ch;
+    }
+    out.push(current);
+    return out;
+  }
+
+  async function loadCsv(){
+    const file = csvFile.files && csvFile.files[0];
+    if (!file){
+      setStatus('Choisissez un fichier');
+      return;
+    }
+
+    const name = (file.name || '').toLowerCase();
+    const isExcel = name.endsWith('.xlsx') || name.endsWith('.xls');
+
+    if (isExcel){
+      async function ensureXLSX(){
+        if (window.XLSX) return;
+        await new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = 'https://cdn.jsdelivr.net/npm/xlsx@0.19.3/dist/xlsx.full.min.js';
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+      try {
+        await ensureXLSX();
+        const buffer = await file.arrayBuffer();
+        const workbook = XLSX.read(buffer, { type: 'array' });
+        const sheet = workbook.Sheets[workbook.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true });
+        const items = [];
+        for (const row of rows){
+          if (!row || row.length < 2) continue;
+          const label = String(row[0] ?? '').trim();
+          const nstr = String(row[1] ?? '').trim();
+          if (!label || !nstr) continue;
+          const { display, value, raw } = normalizeDecimal(nstr, { preserveDisplay: true });
+          items.push({ label, display, value, raw });
+        }
+        state.items = items;
+        state.idx = -1;
+        showCurrent();
+        updateControls();
+        setStatus(items.length ? 'Feuille Excel chargée' : 'Aucune ligne valide');
+        return;
+      } catch(err){
+        console.warn('Lecture Excel échouée', err);
+        setStatus('Erreur de lecture XLS/XLSX');
+      }
+    }
+
+    const text = await readFile(file);
+    const delimiter = detectDelimiter(text);
+    const lines = text.split(/\r?\n/).filter(l => l.trim().length > 0);
+    const items = [];
+    for (const line of lines){
+      const parts = parseCSVLine(line, delimiter);
+      if (parts.length < 2) continue;
+      const label = String(parts[0]).trim().replace(/^"|"$/g, '');
+      const nstr = String(parts[1]).trim().replace(/^"|"$/g, '');
+      if (!label || !nstr) continue;
+      const { display, value, raw } = normalizeDecimal(nstr, { preserveDisplay: true });
+      items.push({ label, display, value, raw });
+    }
+    state.items = items;
+    state.idx = -1;
+    showCurrent();
+    updateControls();
+    setStatus(items.length ? 'Fichier chargé' : 'Aucune ligne valide');
+  }
+
+  /*** ÉVÈNEMENTS UI ***/
+  parseBtn.addEventListener('click', loadFromTextarea);
+  loadCsvBtn.addEventListener('click', loadCsv);
+
+  startBtn.addEventListener('click', start);
+  pauseBtn.addEventListener('click', pause);
+  resumeBtn.addEventListener('click', resume);
+  prevBtn.addEventListener('click', prev);
+  nextBtn.addEventListener('click', next);
+  stopBtn.addEventListener('click', stop);
+
+  lang.addEventListener('change', () => {
+    if (state.recognizer){
+      state.recognizer.lang = lang.value;
+      if (state.listenDesired){
+        scheduleRecogRestart(100);
+      }
+    }
+  });
+
+  paste.addEventListener('paste', () => {
+    setTimeout(loadFromTextarea, 0);
+  });
+
+  document.addEventListener('keydown', (evt) => {
+    if (state.idx < 0) return;
+    if (evt.key === 'ArrowRight'){
+      evt.preventDefault();
+      next();
+    } else if (evt.key === 'ArrowLeft'){
+      evt.preventDefault();
+      prev();
+    } else if (evt.key.toLowerCase() === ' '){
+      evt.preventDefault();
+      state.paused ? resume() : pause();
+    }
+  });
+
+  if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia){
+    navigator.mediaDevices.getUserMedia({ audio: true }).then(() => {
+      recogBadge.textContent = 'Reco: micro autorisé';
+    }).catch(() => {
+      recogBadge.textContent = 'Reco: micro bloqué';
+    });
+  }
+
+  /*** TESTS INTÉGRÉS ***/
+  function runTests(){
+    const logs = [];
+    const ok = (msg) => logs.push('✔ ' + msg);
+    const ko = (msg) => logs.push('✖ ' + msg);
+    function assert(condition, message){
+      if (!condition) throw new Error(message);
+    }
+    try {
+      const sample = 'a,b\n c,d\r\n e,f';
+      const lines = sample.split(/\r?\n/);
+      assert(lines.length === 3, 'Découpage CRLF/LF');
+      ok('Découpage CRLF/LF');
+
+      const d1 = detectDelimiter('x;y\na;b');
+      assert(d1 === ';', 'Délimiteur ";"');
+      ok('Detect ;');
+      const d2 = detectDelimiter('x,y\na,b');
+      assert(d2 === ',', 'Délimiteur ","');
+      ok('Detect ,');
+      const d3 = detectDelimiter('x\t1\ny\t2');
+      assert(d3 === '\t', 'Délimiteur TAB');
+      ok('Detect TAB');
+
+      const parsedCSV = parseCSVLine('ech 1,"23,4"', ',');
+      assert(parsedCSV[0] === 'ech 1' && parsedCSV[1] === '23,4', 'CSV quotes');
+      ok('CSV quotes');
+
+      const nd = normalizeDecimal('23,4', { preserveDisplay: true });
+      assert(nd.display === '23,4' && nd.value === 23.4, 'Virgule préservée');
+      ok('Virgule préservée');
+
+      const nd2 = normalizeDecimal('1 234,5', { preserveDisplay: true });
+      assert(nd2.value === null, 'Espaces milliers invalides');
+      ok('Espaces milliers invalides');
+
+      const parsed = parseText('ech 2\t10.2');
+      assert(parsed[0].display === '10,2', 'Point -> virgule');
+      ok('Point -> virgule');
+
+      testsStatus.textContent = 'Tests réussis';
+      testsStatus.className = 'mini';
+    } catch(err){
+      ko(err.message || String(err));
+      testsStatus.textContent = 'Tests en échec';
+      testsStatus.className = 'mini';
+    } finally {
+      testsLog.textContent = logs.join('\n');
+    }
+  }
+
+  if (testsBtn){
+    testsBtn.addEventListener('click', runTests);
+  }
+
+  setStatus('Prêt. Collez vos données, puis Analyser.');
+  showCurrent();
+  updateControls();
+})();
+</script>
+</body>
+</html>
