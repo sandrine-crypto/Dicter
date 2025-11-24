@@ -380,30 +380,11 @@
         </div>
       </div>
 
-      <details>
-        <summary>Tests intégrés</summary>
-        <button id="testsBtn" class="ghost">Lancer tests</button>
-        <div class="mini" id="testsStatus">Non exécuté</div>
-        <pre class="mini" id="testsLog" style="max-height:200px; overflow:auto; white-space:pre-wrap;"></pre>
-      </details>
     </section>
   </main>
 
   <footer>
-    <div class="mini">
-      <strong>Améliorations V6 Modulaire :</strong>
-      <ul style="margin:8px 0; padding-left:20px;">
-        <li><strong>Architecture modulaire ES6</strong> - Code testé importé de src/core.js</li>
-        <li><strong>Suite de tests complète</strong> - Tests unitaires et E2E automatisés</li>
-        <li>Gestion mémoire améliorée (nettoyage TTS et reconnaissance vocale)</li>
-        <li>Correction race conditions (timers multiples)</li>
-        <li>Validation et sanitisation des entrées utilisateur</li>
-        <li>Parsing CSV robuste avec gestion guillemets imbriqués</li>
-        <li>Chargement XLSX asynchrone (non-bloquant)</li>
-        <li>Accessibilité ARIA complète</li>
-        <li>Gestion d'erreurs exhaustive</li>
-      </ul>
-    </div>
+    <div class="mini">Lecteur vocal V6</div>
   </footer>
 
 <script>
@@ -731,10 +712,6 @@ const parseBtn = document.getElementById('parseBtn');
 const csvFile = document.getElementById('csvFile');
 const loadCsvBtn = document.getElementById('loadCsvBtn');
 const dataTable = document.getElementById('dataTable');
-
-const testsBtn = document.getElementById('testsBtn');
-const testsStatus = document.getElementById('testsStatus');
-const testsLog = document.getElementById('testsLog');
 
 /*** ÉTAT GLOBAL ***/
 const state = createInitialState();
@@ -1207,92 +1184,6 @@ if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
       recogBadge.textContent = 'Reco: micro bloqué';
       recogBadge.className = 'badge err';
     });
-}
-
-/*** TESTS INTÉGRÉS ***/
-function runTests() {
-  const logs = [];
-  const ok = (msg) => logs.push('✔ ' + msg);
-  const ko = (msg) => logs.push('✖ ' + msg);
-
-  function assert(condition, message) {
-    if (!condition) throw new Error(message);
-  }
-
-  try {
-    // Test 1: Découpage lignes
-    const sample = 'a,b\n c,d\r\n e,f';
-    const lines = sample.split(/\r?\n/);
-    assert(lines.length === 3, 'Découpage CRLF/LF');
-    ok('Découpage CRLF/LF');
-
-    // Test 2: Détection délimiteurs
-    const d1 = detectDelimiter('x;y\na;b');
-    assert(d1 === ';', 'Délimiteur ";"');
-    ok('Detect ;');
-
-    const d2 = detectDelimiter('x,y\na,b');
-    assert(d2 === ',', 'Délimiteur ","');
-    ok('Detect ,');
-
-    const d3 = detectDelimiter('x\t1\ny\t2');
-    assert(d3 === '\t', 'Délimiteur TAB');
-    ok('Detect TAB');
-
-    // Test 3: Parsing CSV avec guillemets
-    const parsedCSV = parseCSVLine('ech 1,"23,4"', ',');
-    assert(parsedCSV[0] === 'ech 1' && parsedCSV[1] === '23,4', 'CSV quotes');
-    ok('CSV quotes');
-
-    // Test 4: Guillemets échappés
-    const parsedEscaped = parseCSVLine('test,"val""ue"', ',');
-    assert(parsedEscaped[1] === 'val"ue', 'CSV guillemets échappés');
-    ok('CSV guillemets échappés');
-
-    // Test 5: Normalisation décimale
-    const nd = normalizeDecimal('23,4', { preserveDisplay: true });
-    assert(nd.display === '23,4' && nd.value === 23.4, 'Virgule préservée');
-    ok('Virgule préservée');
-
-    const nd2 = normalizeDecimal('1 234,5', { preserveDisplay: true });
-    assert(nd2.value === null, 'Espaces milliers invalides');
-    ok('Espaces milliers invalides');
-
-    // Test 6: Conversion point -> virgule
-    const parsed = parseText('ech 2\t10.2');
-    assert(parsed[0].display === '10,2', 'Point -> virgule');
-    ok('Point -> virgule');
-
-    // Test 7: Sanitisation
-    const sanitized = sanitizeString('<script>alert(1)</script>');
-    assert(!sanitized.includes('<') && !sanitized.includes('>'), 'Sanitisation XSS');
-    ok('Sanitisation XSS');
-
-    // Test 8: État initial
-    const testState = createInitialState();
-    assert(testState.idx === -1 && testState.items.length === 0, 'État initial');
-    ok('État initial');
-
-    // Test 9: Validation trigger
-    const validTrigger = validateTriggerWord('OUI123!');
-    assert(validTrigger === 'oui', 'Validation trigger');
-    ok('Validation trigger');
-
-    testsStatus.textContent = '✔ Tous les tests réussis';
-    testsStatus.className = 'mini';
-    testsStatus.style.color = 'var(--ok)';
-  } catch (err) {
-    ko(err.message || String(err));
-    testsStatus.textContent = '✖ Tests en échec';
-    testsStatus.className = 'mini';
-    testsStatus.style.color = 'var(--err)';
-  } finally {
-    testsLog.textContent = logs.join('\n');
-  }
-}
-
-if (testsBtn) {
-  testsBtn.addEventListener('click', runTests);
 }
 
 // Nettoyage à la fermeture
