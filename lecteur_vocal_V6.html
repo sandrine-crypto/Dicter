@@ -629,6 +629,7 @@ function createInitialState() {
     idx: -1,
     paused: false,
     listenDesired: false,
+    listening: false,
     recognizer: null,
     recogRestartTimer: null,
     autoTimer: null,
@@ -791,6 +792,9 @@ function speakCurrent() {
       return;
     }
 
+    // Suspendre la reconnaissance pendant la parole
+    suspendListening(false, true);
+
     const sentence = buildSpeechSentence(item);
     const utterance = new SpeechSynthesisUtterance(sentence);
     utterance.lang = lang.value || 'fr-FR';
@@ -799,6 +803,8 @@ function speakCurrent() {
     utterance.volume = parseFloat(volume.value) || 1;
 
     state.speaking = true;
+    recogBadge.textContent = 'Reco: en attente';
+    recogBadge.className = 'badge warn';
 
     utterance.onend = () => {
       state.speaking = false;
@@ -837,15 +843,17 @@ function initRecognizer() {
   recognizer.interimResults = false;
 
   recognizer.onstart = () => {
+    state.listening = true;
     recogBadge.textContent = 'Reco: actif';
     recogBadge.className = 'badge ok';
   };
 
   recognizer.onend = () => {
+    state.listening = false;
     recogBadge.textContent = 'Reco: arrêt';
     recogBadge.className = 'badge warn';
-    if (state.listenDesired) {
-      scheduleRecogRestart(500);
+    if (state.listenDesired && !state.speaking && !state.paused && state.idx >= 0) {
+      scheduleRecogRestart(300);
     }
   };
 
@@ -860,8 +868,11 @@ function initRecognizer() {
       if (!evt.results[i].isFinal) continue;
       const transcript = evt.results[i][0].transcript;
       const triggerWord = trigger.value;
+      setStatus('Entendu: ' + transcript.trim());
       if (detectTriggerInTranscript(transcript, triggerWord)) {
+        setStatus('Détecté: ' + triggerWord);
         next();
+        return;
       }
     }
   };
@@ -872,32 +883,52 @@ function initRecognizer() {
 function startListening() {
   if (!state.recognizer) initRecognizer();
   if (!state.recognizer) return;
+  if (state.listening) return;
+  if (state.speaking || state.paused || state.idx < 0) {
+    recogBadge.textContent = 'Reco: en attente';
+    recogBadge.className = 'badge warn';
+    return;
+  }
 
   clearRecogRestart();
 
   try {
+    state.recognizer.lang = lang.value || 'fr-FR';
     state.recognizer.start();
   } catch (e) {
-    if (e.name !== 'InvalidStateError') {
+    if (e.name === 'InvalidStateError') {
+      scheduleRecogRestart(400);
+    } else {
       console.warn('Erreur start reco:', e);
     }
   }
 }
 
-function suspendListening(cleanup = false) {
+function suspendListening(cleanup = false, keepIntent = false) {
   clearRecogRestart();
-  state.listenDesired = false;
+  if (!keepIntent) {
+    state.listenDesired = false;
+  }
 
-  if (state.recognizer) {
+  if (state.recognizer && state.listening) {
     try {
       state.recognizer.stop();
     } catch (e) {
       console.warn('Erreur stop reco:', e);
     }
+  }
 
-    if (cleanup) {
-      state.recognizer = null;
-    }
+  if (cleanup) {
+    state.recognizer = null;
+    state.listening = false;
+  }
+
+  if (!keepIntent) {
+    recogBadge.textContent = 'Reco: inactif';
+    recogBadge.className = 'badge warn';
+  } else if (state.speaking) {
+    recogBadge.textContent = 'Reco: en attente';
+    recogBadge.className = 'badge warn';
   }
 }
 
@@ -975,7 +1006,7 @@ function pause() {
       console.warn('Erreur pause TTS:', e);
     }
   }
-  suspendListening(false);
+  suspendListening(false, true);
   setStatus('Pause');
   updateControls();
 }
