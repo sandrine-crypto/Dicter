@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Lecteur vocal panoramique – V5 Optimisé</title>
+  <title>Lecteur vocal panoramique – V6 Modulaire</title>
   <style>
     :root {
       --bg: #0f172a;
@@ -282,7 +282,7 @@
 </head>
 <body>
   <header>
-    <h1>Lecteur vocal panoramique – V5 Optimisé</h1>
+    <h1>Lecteur vocal panoramique – V6 Modulaire</h1>
     <div class="status" id="statusLine" role="status" aria-live="polite">Prêt.</div>
   </header>
 
@@ -391,772 +391,648 @@
 
   <footer>
     <div class="mini">
-      <strong>Améliorations V5 Optimisée :</strong>
+      <strong>Améliorations V6 Modulaire :</strong>
       <ul style="margin:8px 0; padding-left:20px;">
+        <li><strong>Architecture modulaire ES6</strong> - Code testé importé de src/core.js</li>
+        <li><strong>Suite de tests complète</strong> - Tests unitaires et E2E automatisés</li>
         <li>Gestion mémoire améliorée (nettoyage TTS et reconnaissance vocale)</li>
         <li>Correction race conditions (timers multiples)</li>
         <li>Validation et sanitisation des entrées utilisateur</li>
         <li>Parsing CSV robuste avec gestion guillemets imbriqués</li>
         <li>Chargement XLSX asynchrone (non-bloquant)</li>
         <li>Accessibilité ARIA complète</li>
-        <li>Code refactorisé (moins de duplication)</li>
         <li>Gestion d'erreurs exhaustive</li>
       </ul>
     </div>
   </footer>
 
-<script>
-(function(){
-  'use strict';
+<script type="module">
+/**
+ * Lecteur Vocal V6 - Version modulaire
+ * Utilise les fonctions testées de src/core.js
+ */
+import {
+  sanitizeString,
+  escapeHtml,
+  normalizeDecimal,
+  detectDelimiter,
+  parseCSVLine,
+  parseText,
+  parseCSV,
+  validateTriggerWord,
+  detectTriggerInTranscript,
+  createInitialState,
+  getButtonStates,
+  formatItemsBadge,
+  getCurrentItem,
+  buildSpeechSentence
+} from './src/core.js';
 
-  /*** ÉLÉMENTS DOM ***/
-  const statusLine = document.getElementById('statusLine');
-  const currentLabel = document.getElementById('currentLabel');
-  const currentValue = document.getElementById('currentValue');
-  const recogBadge = document.getElementById('recogBadge');
-  const synthBadge = document.getElementById('synthBadge');
-  const itemsBadge = document.getElementById('itemsBadge');
+/*** ÉLÉMENTS DOM ***/
+const statusLine = document.getElementById('statusLine');
+const currentLabel = document.getElementById('currentLabel');
+const currentValue = document.getElementById('currentValue');
+const recogBadge = document.getElementById('recogBadge');
+const synthBadge = document.getElementById('synthBadge');
+const itemsBadge = document.getElementById('itemsBadge');
 
-  const startBtn = document.getElementById('startBtn');
-  const pauseBtn = document.getElementById('pauseBtn');
-  const resumeBtn = document.getElementById('resumeBtn');
-  const prevBtn = document.getElementById('prevBtn');
-  const nextBtn = document.getElementById('nextBtn');
-  const stopBtn = document.getElementById('stopBtn');
+const startBtn = document.getElementById('startBtn');
+const pauseBtn = document.getElementById('pauseBtn');
+const resumeBtn = document.getElementById('resumeBtn');
+const prevBtn = document.getElementById('prevBtn');
+const nextBtn = document.getElementById('nextBtn');
+const stopBtn = document.getElementById('stopBtn');
 
-  const trigger = document.getElementById('trigger');
-  const lang = document.getElementById('lang');
-  const rate = document.getElementById('rate');
-  const pitch = document.getElementById('pitch');
-  const volume = document.getElementById('volume');
-  const timeout = document.getElementById('timeout');
+const trigger = document.getElementById('trigger');
+const lang = document.getElementById('lang');
+const rate = document.getElementById('rate');
+const pitch = document.getElementById('pitch');
+const volume = document.getElementById('volume');
+const timeout = document.getElementById('timeout');
 
-  const rateVal = document.getElementById('rateVal');
-  const pitchVal = document.getElementById('pitchVal');
-  const volumeVal = document.getElementById('volumeVal');
+const rateVal = document.getElementById('rateVal');
+const pitchVal = document.getElementById('pitchVal');
+const volumeVal = document.getElementById('volumeVal');
 
-  const paste = document.getElementById('paste');
-  const parseBtn = document.getElementById('parseBtn');
-  const csvFile = document.getElementById('csvFile');
-  const loadCsvBtn = document.getElementById('loadCsvBtn');
-  const dataTable = document.getElementById('dataTable');
+const paste = document.getElementById('paste');
+const parseBtn = document.getElementById('parseBtn');
+const csvFile = document.getElementById('csvFile');
+const loadCsvBtn = document.getElementById('loadCsvBtn');
+const dataTable = document.getElementById('dataTable');
 
-  const testsBtn = document.getElementById('testsBtn');
-  const testsStatus = document.getElementById('testsStatus');
-  const testsLog = document.getElementById('testsLog');
+const testsBtn = document.getElementById('testsBtn');
+const testsStatus = document.getElementById('testsStatus');
+const testsLog = document.getElementById('testsLog');
 
-  /*** ÉTAT GLOBAL ***/
-  const state = {
-    items: [],
-    idx: -1,
-    paused: false,
-    listenDesired: false,
-    recognizer: null,
-    recogRestartTimer: null,
-    autoTimer: null,
-    speaking: false
+/*** ÉTAT GLOBAL ***/
+const state = createInitialState();
+
+/*** UTILITAIRES ***/
+function setStatus(msg) {
+  statusLine.textContent = msg;
+}
+
+function showCurrent() {
+  const badge = formatItemsBadge(state);
+  const item = getCurrentItem(state);
+
+  if (!item) {
+    currentLabel.textContent = '—';
+    currentValue.textContent = '—';
+    itemsBadge.textContent = badge.text;
+    itemsBadge.className = badge.className;
+    updateTable();
+    return;
+  }
+
+  currentLabel.textContent = item.label;
+  currentValue.textContent = item.display;
+  itemsBadge.textContent = badge.text;
+  itemsBadge.className = badge.className;
+
+  updateTable();
+}
+
+function updateTable() {
+  dataTable.innerHTML = '';
+  for (let i = 0; i < state.items.length; i++) {
+    const item = state.items[i];
+    const tr = document.createElement('tr');
+    if (i === state.idx) tr.className = 'active';
+    tr.innerHTML = `
+      <td>${escapeHtml(item.label)}</td>
+      <td>${escapeHtml(item.display)}</td>
+      <td>${item.value !== null ? item.value.toFixed(2) : 'N/A'}</td>
+      <td>${escapeHtml(item.raw)}</td>
+    `;
+    dataTable.appendChild(tr);
+  }
+}
+
+/*** SYNTHÈSE VOCALE ***/
+function checkTTS() {
+  if (!window.speechSynthesis) {
+    synthBadge.textContent = 'TTS: indisponible';
+    synthBadge.className = 'badge err';
+    return false;
+  }
+  synthBadge.textContent = 'TTS: prêt';
+  synthBadge.className = 'badge ok';
+  return true;
+}
+
+function speakCurrent() {
+  return new Promise((resolve) => {
+    if (!checkTTS()) {
+      resolve();
+      return;
+    }
+
+    if (state.speaking) {
+      try {
+        window.speechSynthesis.cancel();
+      } catch (e) {
+        console.warn('Erreur cancel TTS:', e);
+      }
+    }
+
+    const item = getCurrentItem(state);
+    if (!item) {
+      resolve();
+      return;
+    }
+
+    const sentence = buildSpeechSentence(item);
+    const utterance = new SpeechSynthesisUtterance(sentence);
+    utterance.lang = lang.value || 'fr-FR';
+    utterance.rate = parseFloat(rate.value) || 1;
+    utterance.pitch = parseFloat(pitch.value) || 1;
+    utterance.volume = parseFloat(volume.value) || 1;
+
+    state.speaking = true;
+
+    utterance.onend = () => {
+      state.speaking = false;
+      resolve();
+    };
+    utterance.onerror = (e) => {
+      console.warn('Erreur TTS:', e);
+      state.speaking = false;
+      resolve();
+    };
+
+    try {
+      window.speechSynthesis.speak(utterance);
+    } catch (e) {
+      console.warn('Erreur speak:', e);
+      state.speaking = false;
+      resolve();
+    }
+  });
+}
+
+/*** RECONNAISSANCE VOCALE ***/
+function initRecognizer() {
+  if (state.recognizer) return;
+
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRecognition) {
+    recogBadge.textContent = 'Reco: indisponible';
+    recogBadge.className = 'badge err';
+    return;
+  }
+
+  const recognizer = new SpeechRecognition();
+  recognizer.lang = lang.value || 'fr-FR';
+  recognizer.continuous = true;
+  recognizer.interimResults = false;
+
+  recognizer.onstart = () => {
+    recogBadge.textContent = 'Reco: actif';
+    recogBadge.className = 'badge ok';
   };
 
-  /*** UTILITAIRES ***/
-  function setStatus(msg){
-    statusLine.textContent = msg;
-  }
-
-  // Sanitisation sécurisée des entrées
-  function sanitizeString(str, maxLength = 100) {
-    if (typeof str !== 'string') return '';
-    return str.slice(0, maxLength).replace(/[<>'"]/g, '');
-  }
-
-  function normalizeDecimal(str, opts = {}){
-    const preserveDisplay = opts.preserveDisplay || false;
-    const trimmed = String(str || '').trim();
-    if (!trimmed) return { display: '', value: null, raw: trimmed };
-
-    // Détection format : espaces milliers invalides
-    if (/\s/.test(trimmed)) {
-      return { display: trimmed, value: null, raw: trimmed };
+  recognizer.onend = () => {
+    recogBadge.textContent = 'Reco: arrêt';
+    recogBadge.className = 'badge warn';
+    if (state.listenDesired) {
+      scheduleRecogRestart(500);
     }
+  };
 
-    const hasComma = trimmed.includes(',');
-    const hasDot = trimmed.includes('.');
+  recognizer.onerror = (e) => {
+    console.warn('Erreur reco:', e.error);
+    recogBadge.textContent = 'Reco: erreur';
+    recogBadge.className = 'badge err';
+  };
 
-    let normalized = trimmed;
-    let displayStr = trimmed;
-
-    if (hasComma && hasDot){
-      const commaIdx = trimmed.indexOf(',');
-      const dotIdx = trimmed.indexOf('.');
-      if (commaIdx < dotIdx){
-        normalized = trimmed.replace(/,/g, '');
-        displayStr = preserveDisplay ? trimmed : normalized;
-      } else {
-        normalized = trimmed.replace(/\./g, '').replace(',', '.');
-        displayStr = preserveDisplay ? trimmed : normalized.replace('.', ',');
-      }
-    } else if (hasComma){
-      normalized = trimmed.replace(',', '.');
-      displayStr = preserveDisplay ? trimmed : trimmed;
-    } else {
-      normalized = trimmed;
-      displayStr = preserveDisplay ? trimmed.replace('.', ',') : trimmed;
-    }
-
-    const num = parseFloat(normalized);
-    if (isNaN(num)) return { display: trimmed, value: null, raw: trimmed };
-
-    return { display: displayStr, value: num, raw: trimmed };
-  }
-
-  function parseText(text){
-    const lines = text.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
-    const items = [];
-    for (const line of lines){
-      const parts = line.split(/\t+/);
-      if (parts.length < 2) continue;
-      const label = parts[0].trim();
-      const nstr = parts[1].trim();
-      if (!label || !nstr) continue;
-      const { display, value, raw } = normalizeDecimal(nstr, { preserveDisplay: true });
-      items.push({ label: sanitizeString(label, 200), display, value, raw });
-    }
-    return items;
-  }
-
-  function showCurrent(){
-    const hasItems = state.items.length > 0;
-    const running = state.idx >= 0;
-
-    if (!hasItems || !running){
-      currentLabel.textContent = '—';
-      currentValue.textContent = '—';
-      itemsBadge.textContent = state.items.length + ' ligne' + (state.items.length > 1 ? 's' : '');
-      itemsBadge.className = 'badge';
-      updateTable();
-      return;
-    }
-
-    const item = state.items[state.idx];
-    currentLabel.textContent = item.label;
-    currentValue.textContent = item.display;
-
-    itemsBadge.textContent = `${state.idx + 1}/${state.items.length}`;
-    itemsBadge.className = 'badge ok';
-
-    updateTable();
-  }
-
-  function updateTable(){
-    dataTable.innerHTML = '';
-    for (let i = 0; i < state.items.length; i++){
-      const item = state.items[i];
-      const tr = document.createElement('tr');
-      if (i === state.idx) tr.className = 'active';
-      tr.innerHTML = `
-        <td>${escapeHtml(item.label)}</td>
-        <td>${escapeHtml(item.display)}</td>
-        <td>${item.value !== null ? item.value.toFixed(2) : 'N/A'}</td>
-        <td>${escapeHtml(item.raw)}</td>
-      `;
-      dataTable.appendChild(tr);
-    }
-  }
-
-  function escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-  }
-
-  /*** SYNTHÈSE VOCALE ***/
-  function checkTTS(){
-    if (!window.speechSynthesis){
-      synthBadge.textContent = 'TTS: indisponible';
-      synthBadge.className = 'badge err';
-      return false;
-    }
-    synthBadge.textContent = 'TTS: prêt';
-    synthBadge.className = 'badge ok';
-    return true;
-  }
-
-  function speakCurrent(){
-    return new Promise((resolve) => {
-      if (!checkTTS()) {
-        resolve();
-        return;
-      }
-
-      // Nettoyage sécurisé de l'instance précédente
-      if (state.speaking) {
-        try {
-          window.speechSynthesis.cancel();
-        } catch(e) {
-          console.warn('Erreur cancel TTS:', e);
-        }
-      }
-
-      const item = state.items[state.idx];
-      if (!item) {
-        resolve();
-        return;
-      }
-
-      const sentence = `${item.label}. ${item.display}`;
-      const utterance = new SpeechSynthesisUtterance(sentence);
-      utterance.lang = lang.value || 'fr-FR';
-      utterance.rate = parseFloat(rate.value) || 1;
-      utterance.pitch = parseFloat(pitch.value) || 1;
-      utterance.volume = parseFloat(volume.value) || 1;
-
-      state.speaking = true;
-
-      utterance.onend = () => {
-        state.speaking = false;
-        resolve();
-      };
-      utterance.onerror = (e) => {
-        console.warn('Erreur TTS:', e);
-        state.speaking = false;
-        resolve();
-      };
-
-      try {
-        window.speechSynthesis.speak(utterance);
-      } catch(e) {
-        console.warn('Erreur speak:', e);
-        state.speaking = false;
-        resolve();
-      }
-    });
-  }
-
-  /*** RECONNAISSANCE VOCALE ***/
-  function initRecognizer(){
-    if (state.recognizer) return;
-
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRecognition){
-      recogBadge.textContent = 'Reco: indisponible';
-      recogBadge.className = 'badge err';
-      return;
-    }
-
-    const recognizer = new SpeechRecognition();
-    recognizer.lang = lang.value || 'fr-FR';
-    recognizer.continuous = true;
-    recognizer.interimResults = false;
-
-    recognizer.onstart = () => {
-      recogBadge.textContent = 'Reco: actif';
-      recogBadge.className = 'badge ok';
-    };
-
-    recognizer.onend = () => {
-      recogBadge.textContent = 'Reco: arrêt';
-      recogBadge.className = 'badge warn';
-      if (state.listenDesired){
-        scheduleRecogRestart(500);
-      }
-    };
-
-    recognizer.onerror = (e) => {
-      console.warn('Erreur reco:', e.error);
-      recogBadge.textContent = 'Reco: erreur';
-      recogBadge.className = 'badge err';
-    };
-
-    recognizer.onresult = (evt) => {
-      for (let i = evt.resultIndex; i < evt.results.length; i++){
-        if (!evt.results[i].isFinal) continue;
-        const transcript = evt.results[i][0].transcript.trim().toLowerCase();
-        // Sanitisation du trigger
-        const triggerWord = sanitizeString(trigger.value, 50).toLowerCase().replace(/[^a-z]/g, '');
-        if (triggerWord && transcript.includes(triggerWord)){
-          next();
-        }
-      }
-    };
-
-    state.recognizer = recognizer;
-  }
-
-  function startListening(){
-    if (!state.recognizer) initRecognizer();
-    if (!state.recognizer) return;
-
-    clearRecogRestart();
-
-    try {
-      state.recognizer.start();
-    } catch(e) {
-      if (e.name !== 'InvalidStateError'){
-        console.warn('Erreur start reco:', e);
-      }
-    }
-  }
-
-  function suspendListening(cleanup = false){
-    clearRecogRestart();
-    state.listenDesired = false;
-
-    if (state.recognizer){
-      try {
-        state.recognizer.stop();
-      } catch(e) {
-        console.warn('Erreur stop reco:', e);
-      }
-
-      if (cleanup) {
-        state.recognizer = null;
-      }
-    }
-  }
-
-  function clearRecogRestart(){
-    if (state.recogRestartTimer){
-      clearTimeout(state.recogRestartTimer);
-      state.recogRestartTimer = null;
-    }
-  }
-
-  function scheduleRecogRestart(delayMs){
-    clearRecogRestart();
-    state.recogRestartTimer = setTimeout(() => {
-      state.recogRestartTimer = null;
-      if (state.listenDesired && state.recognizer){
-        startListening();
-      }
-    }, delayMs);
-  }
-
-  /*** AVANCE AUTOMATIQUE ***/
-  function clearAuto(){
-    if (state.autoTimer){
-      clearTimeout(state.autoTimer);
-      state.autoTimer = null;
-    }
-  }
-
-  function scheduleAuto(){
-    clearAuto();
-    const delay = parseInt(timeout.value, 10) || 0;
-    if (delay <= 0) return;
-
-    state.autoTimer = setTimeout(() => {
-      state.autoTimer = null;
-      if (state.idx >= 0 && !state.paused){
+  recognizer.onresult = (evt) => {
+    for (let i = evt.resultIndex; i < evt.results.length; i++) {
+      if (!evt.results[i].isFinal) continue;
+      const transcript = evt.results[i][0].transcript;
+      const triggerWord = trigger.value;
+      if (detectTriggerInTranscript(transcript, triggerWord)) {
         next();
       }
-    }, delay * 1000);
-  }
-
-  /*** CONTRÔLES ***/
-  function updateControls(){
-    const hasItems = state.items.length > 0;
-    const running = state.idx >= 0;
-    startBtn.disabled = !hasItems || running;
-    pauseBtn.disabled = !running || state.paused;
-    resumeBtn.disabled = !running || !state.paused;
-    prevBtn.disabled = !running || state.idx <= 0;
-    nextBtn.disabled = !running || state.idx >= state.items.length - 1;
-    stopBtn.disabled = !running;
-  }
-
-  async function start(){
-    if (!state.items.length){
-      setStatus('Aucune donnée');
-      return;
     }
-    state.idx = 0;
-    state.paused = false;
-    state.listenDesired = true;
-    showCurrent();
-    updateControls();
-    await speakCurrent();
-    startListening();
-    scheduleAuto();
-  }
+  };
 
-  function pause(){
-    state.paused = true;
-    clearAuto();
-    if (window.speechSynthesis && state.speaking){
-      try {
-        window.speechSynthesis.cancel();
-      } catch(e) {
-        console.warn('Erreur pause TTS:', e);
-      }
+  state.recognizer = recognizer;
+}
+
+function startListening() {
+  if (!state.recognizer) initRecognizer();
+  if (!state.recognizer) return;
+
+  clearRecogRestart();
+
+  try {
+    state.recognizer.start();
+  } catch (e) {
+    if (e.name !== 'InvalidStateError') {
+      console.warn('Erreur start reco:', e);
     }
-    suspendListening(false);
-    setStatus('Pause');
-    updateControls();
   }
+}
 
-  async function resume(){
-    if (state.idx < 0) return;
-    state.paused = false;
-    state.listenDesired = true;
-    updateControls();
-    await speakCurrent();
-    startListening();
-    scheduleAuto();
-  }
+function suspendListening(cleanup = false) {
+  clearRecogRestart();
+  state.listenDesired = false;
 
-  // Fonction refactorisée pour éviter duplication
-  async function navigateAndSpeak(){
-    showCurrent();
-    updateControls();
-    clearAuto();
-    state.listenDesired = true;
-    await speakCurrent();
-    startListening();
-    scheduleAuto();
-  }
-
-  async function prev(){
-    if (state.idx <= 0) return;
-    state.idx--;
-    await navigateAndSpeak();
-  }
-
-  async function next(){
-    if (state.idx >= state.items.length - 1){
-      stop();
-      return;
-    }
-    state.idx++;
-    await navigateAndSpeak();
-  }
-
-  function stop(){
-    clearAuto();
-    if (window.speechSynthesis && state.speaking){
-      try {
-        window.speechSynthesis.cancel();
-      } catch(e) {
-        console.warn('Erreur stop TTS:', e);
-      }
-    }
-    suspendListening(true); // Nettoyage complet
-    state.idx = -1;
-    state.paused = false;
-    state.speaking = false;
-    showCurrent();
-    updateControls();
-    setStatus('Arrêté');
-  }
-
-  /*** IMPORT DONNÉES ***/
-  function loadFromTextarea(){
-    const text = paste.value || '';
-    state.items = parseText(text);
-    state.idx = -1;
-    showCurrent();
-    updateControls();
-    setStatus(state.items.length ? `${state.items.length} ligne(s) chargée(s)` : 'Aucune ligne valide');
-  }
-
-  function readFile(file){
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(String(reader.result || ''));
-      reader.onerror = reject;
-      reader.readAsText(file, 'utf-8');
-    });
-  }
-
-  function detectDelimiter(sample){
-    const lines = sample.split(/\r?\n/).filter(l => l.trim().length > 0).slice(0, 5);
-    const scores = { ',':0, ';':0, '\t':0, '|':0 };
-    for (const line of lines){
-      scores[','] += (line.match(/,/g) || []).length;
-      scores[';'] += (line.match(/;/g) || []).length;
-      scores['\t'] += (line.match(/\t/g) || []).length;
-      scores['|'] += (line.match(/\|/g) || []).length;
-    }
-    const best = Object.entries(scores).sort((a, b) => b[1] - a[1])[0];
-    if (!best || best[1] === 0) return ';';
-    return best[0] === '\t' ? '\t' : best[0];
-  }
-
-  function parseCSVLine(line, delimiter){
-    const out = [];
-    let current = '';
-    let inQuotes = false;
-    let i = 0;
-    
-    while (i < line.length) {
-      const ch = line[i];
-      
-      if (ch === '"'){
-        if (inQuotes && i + 1 < line.length && line[i + 1] === '"'){
-          // Guillemet échappé
-          current += '"';
-          i += 2;
-          continue;
-        }
-        inQuotes = !inQuotes;
-        i++;
-        continue;
-      }
-      
-      if (ch === delimiter && !inQuotes){
-        out.push(current);
-        current = '';
-        i++;
-        continue;
-      }
-      
-      current += ch;
-      i++;
-    }
-    
-    out.push(current);
-    return out;
-  }
-
-  async function loadCsv(){
-    const file = csvFile.files && csvFile.files[0];
-    if (!file){
-      setStatus('Choisissez un fichier');
-      return;
-    }
-
-    const name = (file.name || '').toLowerCase();
-    const isExcel = name.endsWith('.xlsx') || name.endsWith('.xls');
-
-    if (isExcel){
-      try {
-        // Chargement asynchrone de XLSX
-        if (!window.XLSX) {
-          setStatus('Chargement librairie XLSX...');
-          await new Promise((resolve, reject) => {
-            const script = document.createElement('script');
-            script.src = 'https://cdn.jsdelivr.net/npm/xlsx@0.19.3/dist/xlsx.full.min.js';
-            script.onload = resolve;
-            script.onerror = () => reject(new Error('Échec chargement XLSX'));
-            document.head.appendChild(script);
-          });
-        }
-
-        setStatus('Lecture fichier Excel...');
-        const buffer = await file.arrayBuffer();
-        const workbook = XLSX.read(buffer, { type: 'array' });
-        const sheet = workbook.Sheets[workbook.SheetNames[0]];
-        const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true });
-        
-        const items = [];
-        for (const row of rows){
-          if (!row || row.length < 2) continue;
-          const label = String(row[0] ?? '').trim();
-          const nstr = String(row[1] ?? '').trim();
-          if (!label || !nstr) continue;
-          const { display, value, raw } = normalizeDecimal(nstr, { preserveDisplay: true });
-          items.push({ 
-            label: sanitizeString(label, 200), 
-            display, 
-            value, 
-            raw 
-          });
-        }
-        
-        state.items = items;
-        state.idx = -1;
-        showCurrent();
-        updateControls();
-        setStatus(items.length ? `Excel: ${items.length} ligne(s) chargée(s)` : 'Aucune ligne valide');
-        return;
-      } catch(err){
-        console.error('Lecture Excel échouée', err);
-        setStatus('Erreur de lecture XLS/XLSX: ' + err.message);
-        return;
-      }
-    }
-
-    // Lecture CSV/TSV
+  if (state.recognizer) {
     try {
-      const text = await readFile(file);
-      const delimiter = detectDelimiter(text);
-      const lines = text.split(/\r?\n/).filter(l => l.trim().length > 0);
-      const items = [];
-      
-      for (const line of lines){
-        const parts = parseCSVLine(line, delimiter);
-        if (parts.length < 2) continue;
-        const label = String(parts[0]).trim().replace(/^"|"$/g, '');
-        const nstr = String(parts[1]).trim().replace(/^"|"$/g, '');
-        if (!label || !nstr) continue;
-        const { display, value, raw } = normalizeDecimal(nstr, { preserveDisplay: true });
-        items.push({ 
-          label: sanitizeString(label, 200), 
-          display, 
-          value, 
-          raw 
+      state.recognizer.stop();
+    } catch (e) {
+      console.warn('Erreur stop reco:', e);
+    }
+
+    if (cleanup) {
+      state.recognizer = null;
+    }
+  }
+}
+
+function clearRecogRestart() {
+  if (state.recogRestartTimer) {
+    clearTimeout(state.recogRestartTimer);
+    state.recogRestartTimer = null;
+  }
+}
+
+function scheduleRecogRestart(delayMs) {
+  clearRecogRestart();
+  state.recogRestartTimer = setTimeout(() => {
+    state.recogRestartTimer = null;
+    if (state.listenDesired && state.recognizer) {
+      startListening();
+    }
+  }, delayMs);
+}
+
+/*** AVANCE AUTOMATIQUE ***/
+function clearAuto() {
+  if (state.autoTimer) {
+    clearTimeout(state.autoTimer);
+    state.autoTimer = null;
+  }
+}
+
+function scheduleAuto() {
+  clearAuto();
+  const delay = parseInt(timeout.value, 10) || 0;
+  if (delay <= 0) return;
+
+  state.autoTimer = setTimeout(() => {
+    state.autoTimer = null;
+    if (state.idx >= 0 && !state.paused) {
+      next();
+    }
+  }, delay * 1000);
+}
+
+/*** CONTRÔLES ***/
+function updateControls() {
+  const buttons = getButtonStates(state);
+  startBtn.disabled = buttons.startDisabled;
+  pauseBtn.disabled = buttons.pauseDisabled;
+  resumeBtn.disabled = buttons.resumeDisabled;
+  prevBtn.disabled = buttons.prevDisabled;
+  nextBtn.disabled = buttons.nextDisabled;
+  stopBtn.disabled = buttons.stopDisabled;
+}
+
+async function start() {
+  if (!state.items.length) {
+    setStatus('Aucune donnée');
+    return;
+  }
+  state.idx = 0;
+  state.paused = false;
+  state.listenDesired = true;
+  showCurrent();
+  updateControls();
+  await speakCurrent();
+  startListening();
+  scheduleAuto();
+}
+
+function pause() {
+  state.paused = true;
+  clearAuto();
+  if (window.speechSynthesis && state.speaking) {
+    try {
+      window.speechSynthesis.cancel();
+    } catch (e) {
+      console.warn('Erreur pause TTS:', e);
+    }
+  }
+  suspendListening(false);
+  setStatus('Pause');
+  updateControls();
+}
+
+async function resume() {
+  if (state.idx < 0) return;
+  state.paused = false;
+  state.listenDesired = true;
+  updateControls();
+  await speakCurrent();
+  startListening();
+  scheduleAuto();
+}
+
+async function navigateAndSpeak() {
+  showCurrent();
+  updateControls();
+  clearAuto();
+  state.listenDesired = true;
+  await speakCurrent();
+  startListening();
+  scheduleAuto();
+}
+
+async function prev() {
+  if (state.idx <= 0) return;
+  state.idx--;
+  await navigateAndSpeak();
+}
+
+async function next() {
+  if (state.idx >= state.items.length - 1) {
+    stop();
+    return;
+  }
+  state.idx++;
+  await navigateAndSpeak();
+}
+
+function stop() {
+  clearAuto();
+  if (window.speechSynthesis && state.speaking) {
+    try {
+      window.speechSynthesis.cancel();
+    } catch (e) {
+      console.warn('Erreur stop TTS:', e);
+    }
+  }
+  suspendListening(true);
+  state.idx = -1;
+  state.paused = false;
+  state.speaking = false;
+  showCurrent();
+  updateControls();
+  setStatus('Arrêté');
+}
+
+/*** IMPORT DONNÉES ***/
+function loadFromTextarea() {
+  const text = paste.value || '';
+  state.items = parseText(text);
+  state.idx = -1;
+  showCurrent();
+  updateControls();
+  setStatus(state.items.length ? `${state.items.length} ligne(s) chargée(s)` : 'Aucune ligne valide');
+}
+
+function readFile(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = reject;
+    reader.readAsText(file, 'utf-8');
+  });
+}
+
+async function loadCsv() {
+  const file = csvFile.files && csvFile.files[0];
+  if (!file) {
+    setStatus('Choisissez un fichier');
+    return;
+  }
+
+  const name = (file.name || '').toLowerCase();
+  const isExcel = name.endsWith('.xlsx') || name.endsWith('.xls');
+
+  if (isExcel) {
+    try {
+      if (!window.XLSX) {
+        setStatus('Chargement librairie XLSX...');
+        await new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = 'https://cdn.jsdelivr.net/npm/xlsx@0.19.3/dist/xlsx.full.min.js';
+          script.onload = resolve;
+          script.onerror = () => reject(new Error('Échec chargement XLSX'));
+          document.head.appendChild(script);
         });
       }
-      
+
+      setStatus('Lecture fichier Excel...');
+      const buffer = await file.arrayBuffer();
+      const workbook = XLSX.read(buffer, { type: 'array' });
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true });
+
+      const items = [];
+      for (const row of rows) {
+        if (!row || row.length < 2) continue;
+        const label = String(row[0] ?? '').trim();
+        const nstr = String(row[1] ?? '').trim();
+        if (!label || !nstr) continue;
+        const { display, value, raw } = normalizeDecimal(nstr, { preserveDisplay: true });
+        items.push({
+          label: sanitizeString(label, 200),
+          display,
+          value,
+          raw
+        });
+      }
+
       state.items = items;
       state.idx = -1;
       showCurrent();
       updateControls();
-      setStatus(items.length ? `Fichier: ${items.length} ligne(s) chargée(s)` : 'Aucune ligne valide');
-    } catch(err) {
-      console.error('Lecture fichier échouée', err);
-      setStatus('Erreur de lecture: ' + err.message);
+      setStatus(items.length ? `Excel: ${items.length} ligne(s) chargée(s)` : 'Aucune ligne valide');
+      return;
+    } catch (err) {
+      console.error('Lecture Excel échouée', err);
+      setStatus('Erreur de lecture XLS/XLSX: ' + err.message);
+      return;
     }
   }
 
-  /*** ÉVÈNEMENTS UI ***/
-  parseBtn.addEventListener('click', loadFromTextarea);
-  loadCsvBtn.addEventListener('click', loadCsv);
-
-  startBtn.addEventListener('click', start);
-  pauseBtn.addEventListener('click', pause);
-  resumeBtn.addEventListener('click', resume);
-  prevBtn.addEventListener('click', prev);
-  nextBtn.addEventListener('click', next);
-  stopBtn.addEventListener('click', stop);
-
-  lang.addEventListener('change', () => {
-    if (state.recognizer){
-      state.recognizer.lang = lang.value;
-      if (state.listenDesired){
-        scheduleRecogRestart(100);
-      }
-    }
-  });
-
-  rate.addEventListener('input', () => {
-    rateVal.textContent = parseFloat(rate.value).toFixed(1);
-  });
-
-  pitch.addEventListener('input', () => {
-    pitchVal.textContent = parseFloat(pitch.value).toFixed(1);
-  });
-
-  volume.addEventListener('input', () => {
-    volumeVal.textContent = parseFloat(volume.value).toFixed(1);
-  });
-
-  paste.addEventListener('paste', () => {
-    setTimeout(loadFromTextarea, 0);
-  });
-
-  document.addEventListener('keydown', (evt) => {
-    if (state.idx < 0) return;
-    if (evt.key === 'ArrowRight'){
-      evt.preventDefault();
-      next();
-    } else if (evt.key === 'ArrowLeft'){
-      evt.preventDefault();
-      prev();
-    } else if (evt.key === ' ' || evt.key === 'Spacebar'){
-      evt.preventDefault();
-      state.paused ? resume() : pause();
-    }
-  });
-
-  // Vérification permission micro
-  if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia){
-    navigator.mediaDevices.getUserMedia({ audio: true })
-      .then(() => {
-        recogBadge.textContent = 'Reco: micro autorisé';
-        recogBadge.className = 'badge ok';
-      })
-      .catch(() => {
-        recogBadge.textContent = 'Reco: micro bloqué';
-        recogBadge.className = 'badge err';
-      });
+  // Lecture CSV/TSV
+  try {
+    const text = await readFile(file);
+    state.items = parseCSV(text);
+    state.idx = -1;
+    showCurrent();
+    updateControls();
+    setStatus(state.items.length ? `Fichier: ${state.items.length} ligne(s) chargée(s)` : 'Aucune ligne valide');
+  } catch (err) {
+    console.error('Lecture fichier échouée', err);
+    setStatus('Erreur de lecture: ' + err.message);
   }
+}
 
-  /*** TESTS INTÉGRÉS ***/
-  function runTests(){
-    const logs = [];
-    const ok = (msg) => logs.push('✔ ' + msg);
-    const ko = (msg) => logs.push('✖ ' + msg);
-    
-    function assert(condition, message){
-      if (!condition) throw new Error(message);
-    }
-    
-    try {
-      // Test 1: Découpage lignes
-      const sample = 'a,b\n c,d\r\n e,f';
-      const lines = sample.split(/\r?\n/);
-      assert(lines.length === 3, 'Découpage CRLF/LF');
-      ok('Découpage CRLF/LF');
+/*** ÉVÈNEMENTS UI ***/
+parseBtn.addEventListener('click', loadFromTextarea);
+loadCsvBtn.addEventListener('click', loadCsv);
 
-      // Test 2: Détection délimiteurs
-      const d1 = detectDelimiter('x;y\na;b');
-      assert(d1 === ';', 'Délimiteur ";"');
-      ok('Detect ;');
-      
-      const d2 = detectDelimiter('x,y\na,b');
-      assert(d2 === ',', 'Délimiteur ","');
-      ok('Detect ,');
-      
-      const d3 = detectDelimiter('x\t1\ny\t2');
-      assert(d3 === '\t', 'Délimiteur TAB');
-      ok('Detect TAB');
+startBtn.addEventListener('click', start);
+pauseBtn.addEventListener('click', pause);
+resumeBtn.addEventListener('click', resume);
+prevBtn.addEventListener('click', prev);
+nextBtn.addEventListener('click', next);
+stopBtn.addEventListener('click', stop);
 
-      // Test 3: Parsing CSV avec guillemets
-      const parsedCSV = parseCSVLine('ech 1,"23,4"', ',');
-      assert(parsedCSV[0] === 'ech 1' && parsedCSV[1] === '23,4', 'CSV quotes');
-      ok('CSV quotes');
-      
-      // Test 4: Guillemets échappés
-      const parsedEscaped = parseCSVLine('test,"val""ue"', ',');
-      assert(parsedEscaped[1] === 'val"ue', 'CSV guillemets échappés');
-      ok('CSV guillemets échappés');
-
-      // Test 5: Normalisation décimale
-      const nd = normalizeDecimal('23,4', { preserveDisplay: true });
-      assert(nd.display === '23,4' && nd.value === 23.4, 'Virgule préservée');
-      ok('Virgule préservée');
-
-      const nd2 = normalizeDecimal('1 234,5', { preserveDisplay: true });
-      assert(nd2.value === null, 'Espaces milliers invalides');
-      ok('Espaces milliers invalides');
-
-      // Test 6: Conversion point -> virgule
-      const parsed = parseText('ech 2\t10.2');
-      assert(parsed[0].display === '10,2', 'Point -> virgule');
-      ok('Point -> virgule');
-
-      // Test 7: Sanitisation
-      const sanitized = sanitizeString('<script>alert(1)</script>');
-      assert(!sanitized.includes('<') && !sanitized.includes('>'), 'Sanitisation XSS');
-      ok('Sanitisation XSS');
-
-      testsStatus.textContent = '✔ Tous les tests réussis';
-      testsStatus.className = 'mini';
-      testsStatus.style.color = 'var(--ok)';
-    } catch(err){
-      ko(err.message || String(err));
-      testsStatus.textContent = '✖ Tests en échec';
-      testsStatus.className = 'mini';
-      testsStatus.style.color = 'var(--err)';
-    } finally {
-      testsLog.textContent = logs.join('\n');
+lang.addEventListener('change', () => {
+  if (state.recognizer) {
+    state.recognizer.lang = lang.value;
+    if (state.listenDesired) {
+      scheduleRecogRestart(100);
     }
   }
+});
 
-  if (testsBtn){
-    testsBtn.addEventListener('click', runTests);
+rate.addEventListener('input', () => {
+  rateVal.textContent = parseFloat(rate.value).toFixed(1);
+});
+
+pitch.addEventListener('input', () => {
+  pitchVal.textContent = parseFloat(pitch.value).toFixed(1);
+});
+
+volume.addEventListener('input', () => {
+  volumeVal.textContent = parseFloat(volume.value).toFixed(1);
+});
+
+paste.addEventListener('paste', () => {
+  setTimeout(loadFromTextarea, 0);
+});
+
+document.addEventListener('keydown', (evt) => {
+  if (state.idx < 0) return;
+  if (evt.key === 'ArrowRight') {
+    evt.preventDefault();
+    next();
+  } else if (evt.key === 'ArrowLeft') {
+    evt.preventDefault();
+    prev();
+  } else if (evt.key === ' ' || evt.key === 'Spacebar') {
+    evt.preventDefault();
+    state.paused ? resume() : pause();
+  }
+});
+
+// Vérification permission micro
+if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+  navigator.mediaDevices.getUserMedia({ audio: true })
+    .then(() => {
+      recogBadge.textContent = 'Reco: micro autorisé';
+      recogBadge.className = 'badge ok';
+    })
+    .catch(() => {
+      recogBadge.textContent = 'Reco: micro bloqué';
+      recogBadge.className = 'badge err';
+    });
+}
+
+/*** TESTS INTÉGRÉS ***/
+function runTests() {
+  const logs = [];
+  const ok = (msg) => logs.push('✔ ' + msg);
+  const ko = (msg) => logs.push('✖ ' + msg);
+
+  function assert(condition, message) {
+    if (!condition) throw new Error(message);
   }
 
-  // Nettoyage à la fermeture
-  window.addEventListener('beforeunload', () => {
-    stop();
-  });
+  try {
+    // Test 1: Découpage lignes
+    const sample = 'a,b\n c,d\r\n e,f';
+    const lines = sample.split(/\r?\n/);
+    assert(lines.length === 3, 'Découpage CRLF/LF');
+    ok('Découpage CRLF/LF');
 
-  // Initialisation
-  checkTTS();
-  setStatus('Prêt. Collez vos données, puis Analyser.');
-  showCurrent();
-  updateControls();
-})();
+    // Test 2: Détection délimiteurs
+    const d1 = detectDelimiter('x;y\na;b');
+    assert(d1 === ';', 'Délimiteur ";"');
+    ok('Detect ;');
+
+    const d2 = detectDelimiter('x,y\na,b');
+    assert(d2 === ',', 'Délimiteur ","');
+    ok('Detect ,');
+
+    const d3 = detectDelimiter('x\t1\ny\t2');
+    assert(d3 === '\t', 'Délimiteur TAB');
+    ok('Detect TAB');
+
+    // Test 3: Parsing CSV avec guillemets
+    const parsedCSV = parseCSVLine('ech 1,"23,4"', ',');
+    assert(parsedCSV[0] === 'ech 1' && parsedCSV[1] === '23,4', 'CSV quotes');
+    ok('CSV quotes');
+
+    // Test 4: Guillemets échappés
+    const parsedEscaped = parseCSVLine('test,"val""ue"', ',');
+    assert(parsedEscaped[1] === 'val"ue', 'CSV guillemets échappés');
+    ok('CSV guillemets échappés');
+
+    // Test 5: Normalisation décimale
+    const nd = normalizeDecimal('23,4', { preserveDisplay: true });
+    assert(nd.display === '23,4' && nd.value === 23.4, 'Virgule préservée');
+    ok('Virgule préservée');
+
+    const nd2 = normalizeDecimal('1 234,5', { preserveDisplay: true });
+    assert(nd2.value === null, 'Espaces milliers invalides');
+    ok('Espaces milliers invalides');
+
+    // Test 6: Conversion point -> virgule
+    const parsed = parseText('ech 2\t10.2');
+    assert(parsed[0].display === '10,2', 'Point -> virgule');
+    ok('Point -> virgule');
+
+    // Test 7: Sanitisation
+    const sanitized = sanitizeString('<script>alert(1)</script>');
+    assert(!sanitized.includes('<') && !sanitized.includes('>'), 'Sanitisation XSS');
+    ok('Sanitisation XSS');
+
+    // Test 8: État initial (nouveau test)
+    const testState = createInitialState();
+    assert(testState.idx === -1 && testState.items.length === 0, 'État initial');
+    ok('État initial');
+
+    // Test 9: Validation trigger
+    const validTrigger = validateTriggerWord('OUI123!');
+    assert(validTrigger === 'oui', 'Validation trigger');
+    ok('Validation trigger');
+
+    testsStatus.textContent = '✔ Tous les tests réussis';
+    testsStatus.className = 'mini';
+    testsStatus.style.color = 'var(--ok)';
+  } catch (err) {
+    ko(err.message || String(err));
+    testsStatus.textContent = '✖ Tests en échec';
+    testsStatus.className = 'mini';
+    testsStatus.style.color = 'var(--err)';
+  } finally {
+    testsLog.textContent = logs.join('\n');
+  }
+}
+
+if (testsBtn) {
+  testsBtn.addEventListener('click', runTests);
+}
+
+// Nettoyage à la fermeture
+window.addEventListener('beforeunload', () => {
+  stop();
+});
+
+// Initialisation
+checkTTS();
+setStatus('Prêt. Collez vos données, puis Analyser.');
+showCurrent();
+updateControls();
 </script>
 </body>
 </html>
